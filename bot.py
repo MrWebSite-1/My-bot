@@ -1,4 +1,4 @@
-import os, json, asyncio, threading
+import os, re, json, random, asyncio, threading
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from google import genai
@@ -21,6 +21,28 @@ SUMMARY_EVERY = 30
 KEEP_DAYS = 30
 REPEATS = {"daily": "har kuni", "weekly": "har hafta",
            "weekdays": "ish kunlari"}
+EMOJI_RE = re.compile(
+    "[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200d]")
+STYLES = {
+    "muloyim": ("🌸 Muloyim", ""),
+    "quvnoq": ("😄 Quvnoq",
+        "Hozirgi uslub: quvnoq, energiyali va o'ynoqi; ko'p emoji "
+        "ishlat, ba'zan hazil qil, lekin g'amxo'rlikni yo'qotma."),
+    "sokin": ("🌙 Sokin",
+        "Hozirgi uslub: sokin, yumshoq va o'ychan; gaplar qisqa "
+        "va mayin bo'lsin."),
+    "hazilkash": ("😏 Hazilkash",
+        "Hozirgi uslub: hazilkash, shirin qochirimlar va yengil "
+        "hazillar bilan; hech qachon xafa qilma."),
+    "ishchan": ("📋 Ishchan",
+        "Hozirgi uslub: aniq, tartibli va lo'nda; ortiqcha gap va "
+        "emojisiz, foydali javobga e'tibor ber."),
+}
+VOICES = {"uz-UZ-MadinaNeural": "Madina (ayol)",
+          "uz-UZ-SardorNeural": "Sardor (erkak)"}
+RATES = {"-20%": "🐢 Sekin", "+0%": "Oddiy", "+20%": "🐇 Tez"}
+VMODES = {"auto": "Ovozga ovoz bilan", "always": "Doim ovozli",
+          "off": "Ovozsiz"}
 STATE = {}
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
@@ -68,7 +90,9 @@ BASE = (
     "ham yengil hazil bilan javob ber; ish yoki jiddiy savol "
     "bo'lsa, aniq, tartibli va foydali bo'l; yutuq haqida "
     "aytsa, chin dildan quvon. Javoblar odatda qisqa (1-3 gap), "
-    "tabiiy va jonli bo'lsin, emojini kam ishlat. "
+    "tabiiy va jonli bo'lsin. Emoji va stikerlardan erkin va "
+    "cheklovsiz foydalan: his-tuyg'uni jonli ifodalash uchun "
+    "xohlagancha emoji ishlat. "
     "Foydalanuvchi aytgan narsalarni eslab, ular haqida "
     "vaqti-vaqti bilan qiziqib so'ra. Sun'iy ko'rinadigan "
     "maqtov va ortiqcha rasmiyatchilikdan qoch. Agar "
@@ -78,7 +102,7 @@ BASE = (
 )
 RULES = (
     "\n\nJavobingni FAQAT JSON qilib qaytar: "
-    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ...}. '
+    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ..., "sticker": ...}. '
     "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
     "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
     "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
@@ -241,9 +265,14 @@ def cleanup_db():
      .lt("created_at", old).execute())
 
 # ---------- ovoz ----------
-async def tts(text):
+async def tts(text, voice=None, rate=None):
+    clean = EMOJI_RE.sub("", text).strip()
+    if not clean:
+        raise ValueError("matn bo'sh")
+    comm = edge_tts.Communicate(
+        clean, voice or VOICE, rate=rate or "+0%")
     buf = bytearray()
-    async for ch in edge_tts.Communicate(text, VOICE).stream():
+    async for ch in comm.stream():
         if ch["type"] == "audio":
             buf += ch["data"]
     return bytes(buf)
@@ -375,7 +404,10 @@ async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
     await asyncio.to_thread(ensure_settings, cid)
+    st, pack = {}, {}
     try:
+        st = await asyncio.to_thread(get_settings, cid)
+        pack = await get_pack(ctx.bot, st)
         history = await asyncio.to_thread(get_history, cid)
         frows = (await asyncio.to_thread(
             list_facts, cid))[-60:]
@@ -384,6 +416,14 @@ async def handle(update, ctx):
         now = datetime.now(TZ)
         system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
                   + now.strftime("%A, %Y-%m-%d %H:%M"))
+        system += style_text(st)
+        if pack:
+            system += ("\n\nStiker: javobingga mos stiker "
+                       "yuborish uchun sticker maydoniga quyidagi "
+                       "emojilardan BITTASINI yoz (cheklov yo'q, "
+                       "kayfiyatga qarab xohlagancha ishlat), "
+                       "kerak bo'lmasa null: "
+                       + " ".join(list(pack)[:40]))
         if facts:
             system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                        + "\n- ".join(facts))
@@ -412,6 +452,17 @@ async def handle(update, ctx):
             parts = [types.Part.from_bytes(
                 data=data, mime_type="image/jpeg"),
                 types.Part(text=cap)]
+        elif msg.sticker:
+            emo = msg.sticker.emoji or ""
+            parts = [types.Part(
+                text=f"[Foydalanuvchi stiker yubordi: {emo}]")]
+            if (msg.sticker.set_name and not st.get("sticker_set")
+                    and st.get("stickers") is not False):
+                await asyncio.to_thread(
+                    update_setting, cid, "sticker_set",
+                    msg.sticker.set_name)
+                pack = await get_pack(ctx.bot, {
+                    "sticker_set": msg.sticker.set_name})
         else:
             parts = [types.Part(text=msg.text)]
         contents.append(types.Content(role="user", parts=parts))
@@ -424,6 +475,8 @@ async def handle(update, ctx):
 
         if msg.photo:
             fallback = "[rasm] " + (msg.caption or "")
+        elif msg.sticker:
+            fallback = "[stiker] " + (msg.sticker.emoji or "")
         else:
             fallback = msg.text or "[ovozli xabar]"
         try:
@@ -435,8 +488,9 @@ async def handle(update, ctx):
                 user_text = j.get("transcript") or fallback
             rem = j.get("reminder")
             mem = j.get("memory")
+            stk = j.get("sticker")
         except Exception:
-            answer, rem, mem = r.text, None, None
+            answer, rem, mem, stk = r.text, None, None, None
             user_text = fallback
 
         extra = ""
@@ -491,9 +545,17 @@ async def handle(update, ctx):
         await msg.reply_text(answer + extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
-        if msg.voice:
+        if isinstance(stk, str) and pack.get(stk.strip()):
             try:
-                await msg.reply_voice(await tts(answer))
+                await msg.reply_sticker(
+                    random.choice(pack[stk.strip()]))
+            except Exception as e:
+                print("STIKER xato:", e)
+        vmode = st.get("vmode") or "auto"
+        if vmode == "always" or (vmode == "auto" and msg.voice):
+            try:
+                await msg.reply_voice(await tts(
+                    answer, st.get("voice"), st.get("rate")))
             except Exception as e:
                 print("TTS xato:", e)
         await maybe_extract(cid)
@@ -624,6 +686,112 @@ async def refresh_cmd(update, ctx):
         await update.message.reply_text(
             "Hozir yangilab bo'lmadi, keyinroq urinib ko'ring.")
 
+# ---------- sozlamalar (uslub, ovoz, stiker) ----------
+def get_settings(cid):
+    r = (db.table("settings").select("*")
+         .eq("chat_id", cid).execute())
+    return r.data[0] if r.data else {}
+
+def update_setting(cid, key, value):
+    db.table("settings").upsert(
+        {"chat_id": cid, key: value},
+        on_conflict="chat_id").execute()
+
+def style_text(st):
+    key = (st or {}).get("style") or "muloyim"
+    extra = STYLES.get(key, STYLES["muloyim"])[1]
+    return ("\n\n" + extra) if extra else ""
+
+async def get_pack(bot, st):
+    name = (st or {}).get("sticker_set")
+    if not name or st.get("stickers") is False:
+        return {}
+    cache = STATE.setdefault("packs", {})
+    if name in cache:
+        return cache[name]
+    try:
+        ss = await bot.get_sticker_set(name)
+        d = {}
+        for x in ss.stickers:
+            if x.emoji:
+                d.setdefault(x.emoji, []).append(x.file_id)
+        cache[name] = d
+        return d
+    except Exception as e:
+        print("PAKET xato:", e)
+        return {}
+
+def mark(cur, key, label):
+    return ("✔ " if cur == key else "") + label
+
+async def style_cmd(update, ctx):
+    st = await asyncio.to_thread(
+        get_settings, update.message.chat_id)
+    cur = st.get("style") or "muloyim"
+    rows = [[InlineKeyboardButton(
+        mark(cur, k, v[0]), callback_data=f"set:style:{k}")]
+        for k, v in STYLES.items()]
+    await update.message.reply_text(
+        "Qaysi uslubda gaplashay? Asosiy xarakterim (muloyim, "
+        "g'amxo'r) o'zgarmaydi, faqat ohang almashadi.",
+        reply_markup=InlineKeyboardMarkup(rows))
+
+async def voice_cmd(update, ctx):
+    st = await asyncio.to_thread(
+        get_settings, update.message.chat_id)
+    cv = st.get("voice") or VOICE
+    cr = st.get("rate") or "+0%"
+    cm = st.get("vmode") or "auto"
+    rows = [
+        [InlineKeyboardButton(mark(cv, k, v),
+                              callback_data=f"set:voice:{k}")
+         for k, v in VOICES.items()],
+        [InlineKeyboardButton(mark(cr, k, v),
+                              callback_data=f"set:rate:{k}")
+         for k, v in RATES.items()],
+        [InlineKeyboardButton(mark(cm, k, v),
+                              callback_data=f"set:vmode:{k}")
+         for k, v in VMODES.items()],
+    ]
+    await update.message.reply_text(
+        "Ovoz sozlamalari: ovoz turi, tezligi va qachon "
+        "ovozli javob berishim.",
+        reply_markup=InlineKeyboardMarkup(rows))
+
+async def sticker_pack_cmd(update, ctx):
+    cid = update.message.chat_id
+    arg = " ".join(ctx.args).strip().rstrip("/")
+    if not arg:
+        await update.message.reply_text(
+            "Menga bironta stiker yuboring, uning paketini "
+            "o'zim eslab qolaman. Yoki: /stiker_paket <nom "
+            "yoki t.me/addstickers/... havolasi>")
+        return
+    name = arg.split("/")[-1]
+    try:
+        await ctx.bot.get_sticker_set(name)
+    except Exception:
+        await update.message.reply_text(
+            "Bunday stiker paketi topilmadi.")
+        return
+    await asyncio.to_thread(update_setting, cid, "sticker_set", name)
+    await asyncio.to_thread(update_setting, cid, "stickers", True)
+    STATE.get("packs", {}).pop(name, None)
+    await update.message.reply_text(
+        "Paket saqlandi, endi suhbatda stikerlardan "
+        "foydalanaman 🎴")
+
+async def sticker_off(update, ctx):
+    await asyncio.to_thread(
+        update_setting, update.message.chat_id, "stickers", False)
+    await update.message.reply_text(
+        "Stiker yubormayman. Qaytarish: /stiker_bor")
+
+async def sticker_on(update, ctx):
+    await asyncio.to_thread(
+        update_setting, update.message.chat_id, "stickers", True)
+    await update.message.reply_text("Stikerlar yoqildi 🎴")
+
 # ---------- o'zi birinchi yozishi ----------
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
@@ -681,8 +849,10 @@ async def greet(app, cid, kind):
         return
     history = await asyncio.to_thread(get_history, cid)
     facts = [x["fact"] for x in frows[-60:]]
+    st = await asyncio.to_thread(get_settings, cid)
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M"))
+    system += style_text(st)
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))
@@ -791,6 +961,29 @@ async def on_button(update, ctx):
                 "Yaxshi, " + ("1 soatdan" if mins >= 60
                               else f"{mins} daqiqadan")
                 + " keyin yana eslataman.")
+        elif parts[0] == "set" and len(parts) == 3:
+            key, val = parts[1], parts[2]
+            table = {"style": STYLES, "voice": VOICES,
+                     "rate": RATES, "vmode": VMODES}
+            if key not in table or val not in table[key]:
+                await q.answer("?")
+                return
+            cid = q.message.chat_id
+            await asyncio.to_thread(update_setting, cid, key, val)
+            label = table[key][val]
+            if isinstance(label, tuple):
+                label = label[0]
+            await q.answer("Saqlandi")
+            await q.message.reply_text(f"✅ {label}")
+            if key in ("voice", "rate"):
+                st2 = await asyncio.to_thread(get_settings, cid)
+                try:
+                    await q.message.reply_voice(await tts(
+                        "Salom, men Reze. Ovozim shunday "
+                        "eshitiladi.",
+                        st2.get("voice"), st2.get("rate")))
+                except Exception as e:
+                    print("NAMUNA xato:", e)
         else:
             await q.answer()
     except Exception as e:
@@ -817,11 +1010,19 @@ app.add_handler(CommandHandler(
     "fakt_ochir", fact_del, filters=ACCESS))
 app.add_handler(CommandHandler(
     "eslab_qol", fact_add, filters=ACCESS))
+app.add_handler(CommandHandler("uslub", style_cmd, filters=ACCESS))
+app.add_handler(CommandHandler("ovoz", voice_cmd, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "stiker_paket", sticker_pack_cmd, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "stiker_yoq", sticker_off, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "stiker_bor", sticker_on, filters=ACCESS))
 app.add_handler(CommandHandler(
     "xulosa", summary_cmd, filters=ACCESS))
 app.add_handler(CommandHandler(
     "yangila", refresh_cmd, filters=ACCESS))
 app.add_handler(MessageHandler(
-    (filters.VOICE | filters.PHOTO |
+    (filters.VOICE | filters.PHOTO | filters.Sticker.ALL |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
 app.run_polling()
