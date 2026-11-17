@@ -201,7 +201,7 @@ async def tts(text):
 
 # ---------- uzoq xotira ----------
 async def update_facts(cid):
-    hist = await asyncio.to_thread(get_history, cid)
+    hist = await asyncio.to_thread(get_history, cid, 30)
     rows = (await asyncio.to_thread(list_facts, cid))[-80:]
     old = "\n".join(f'{i}. {x["fact"]}'
                     for i, x in enumerate(rows, 1)) or "(hali yo'q)"
