@@ -157,6 +157,7 @@ async def maybe_extract(cid):
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
+    await asyncio.to_thread(ensure_settings, cid)
     try:
         history = await asyncio.to_thread(get_history, cid)
         facts = await asyncio.to_thread(get_facts, cid)
@@ -261,6 +262,90 @@ async def cancel(update, ctx):
     await asyncio.to_thread(del_rem, update.message.chat_id, rid)
     await update.message.reply_text("Bekor qilindi.")
 
+# ---------- o'zi yozishi ----------
+SLOTS = [("ertalab", 9), ("kechqurun", 21)]
+SLOT_PROMPTS = {
+    "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
+               "yoz (1-2 gap). Mos bo'lsa, oxirgi suhbatdan "
+               "biror narsa haqida so'ra.",
+    "kechqurun": "Foydalanuvchiga kechki qisqa, iliq xabar "
+                 "yoz: kuni qanday o'tganini so'ra (1-2 gap).",
+}
+
+def ensure_settings(cid):
+    db.table("settings").upsert(
+        {"chat_id": cid}, on_conflict="chat_id",
+        ignore_duplicates=True).execute()
+
+def proactive_chats():
+    r = (db.table("settings").select("chat_id,last_slot")
+         .eq("proactive", True).execute())
+    return r.data
+
+def set_slot(cid, slot):
+    (db.table("settings").update({"last_slot": slot})
+     .eq("chat_id", cid).execute())
+
+def set_proactive(cid, on):
+    db.table("settings").upsert(
+        {"chat_id": cid, "proactive": on},
+        on_conflict="chat_id").execute()
+
+async def greet(app, cid, kind):
+    history = await asyncio.to_thread(get_history, cid)
+    facts = await asyncio.to_thread(get_facts, cid)
+    system = (BASE + "\n\nHozirgi Toshkent vaqti: "
+              + datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M"))
+    if facts:
+        system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
+                   + "\n- ".join(facts))
+    hist = "\n".join(f'{h["role"]}: {h["content"]}'
+                     for h in history[-8:])
+    prompt = SLOT_PROMPTS[kind] + "\n\nOxirgi suhbat:\n" + hist
+    r = await client.aio.models.generate_content(
+        model=MODEL, contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system))
+    text = (r.text or "").strip()
+    if text:
+        await app.bot.send_message(cid, text)
+        await asyncio.to_thread(save_msg, cid, "model", text)
+
+async def proactive_loop(app):
+    while True:
+        try:
+            now = datetime.now(TZ)
+            day = now.strftime("%Y-%m-%d")
+            for kind, hour in SLOTS:
+                if not (hour <= now.hour < hour + 3):
+                    continue
+                key = f"{day}-{kind}"
+                rows = await asyncio.to_thread(proactive_chats)
+                for row in rows:
+                    if row.get("last_slot") == key:
+                        continue
+                    await asyncio.to_thread(
+                        set_slot, row["chat_id"], key)
+                    try:
+                        await greet(app, row["chat_id"], kind)
+                    except Exception as e:
+                        print("SALOM xato:", e)
+        except Exception as e:
+            print("PROAKTIV xato:", e)
+        await asyncio.sleep(300)
+
+async def msg_on(update, ctx):
+    await asyncio.to_thread(
+        set_proactive, update.message.chat_id, True)
+    await update.message.reply_text(
+        "Yaxshi, ba'zan o'zim yozib turaman.")
+
+async def msg_off(update, ctx):
+    await asyncio.to_thread(
+        set_proactive, update.message.chat_id, False)
+    await update.message.reply_text(
+        "Xo'p, endi o'zim yozmayman. Qaytarish: /xabar_bor")
+
 # ---------- eslatma sikli ----------
 async def reminder_loop(app):
     while True:
@@ -278,8 +363,8 @@ async def reminder_loop(app):
         await asyncio.sleep(30)
 
 async def start_loop(app):
-    app.bot_data["loop_task"] = asyncio.create_task(
-        reminder_loop(app))
+    app.bot_data["t1"] = asyncio.create_task(reminder_loop(app))
+    app.bot_data["t2"] = asyncio.create_task(proactive_loop(app))
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
@@ -287,6 +372,8 @@ app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
 app.add_handler(CommandHandler("unut", forget))
 app.add_handler(CommandHandler("eslatmalar", list_rem))
 app.add_handler(CommandHandler("bekor", cancel))
+app.add_handler(CommandHandler("xabar_bor", msg_on))
+app.add_handler(CommandHandler("xabar_yoq", msg_off))
 app.add_handler(MessageHandler(
     filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle))
 app.run_polling()
