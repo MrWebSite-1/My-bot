@@ -98,8 +98,9 @@ def get_history(cid):
 
 def get_facts(cid):
     r = (db.table("facts").select("fact")
-         .eq("chat_id", cid).order("id").limit(50).execute())
-    return [x["fact"] for x in r.data]
+         .eq("chat_id", cid).order("id", desc=True)
+         .limit(60).execute())
+    return [x["fact"] for x in reversed(r.data)]
 
 def save_msg(cid, role, content):
     db.table("messages").insert(
@@ -159,15 +160,28 @@ async def maybe_extract(cid):
         return
     hist = await asyncio.to_thread(get_history, cid)
     old = await asyncio.to_thread(get_facts, cid)
-    text = "\n".join(f'{h["role"]}: {h["content"]}' for h in hist)
+    text = "\n".join(h["content"] for h in hist
+                     if h["role"] == "user")
     prompt = (
-        "Suhbatdan foydalanuvchi haqida uzoq esda qolishi kerak "
-        "bo'lgan YANGI faktlarni ajrat (ism, qiziqish, reja, "
-        "afzallik). Faqat foydalanuvchi o'zi aytganlarini ol. "
-        "Mavjudlarni takrorlama. JSON ro'yxat qaytar: "
-        '["fakt", ...]. Yangi fakt bo\'lmasa [].\n\n'
+        "Quyida foydalanuvchining oxirgi xabarlari. Ulardan "
+        "foydalanuvchi haqida UZOQ MUDDATGA (oylar, yillar) "
+        "esda qolishi kerak bo'lgan faktlarni ajrat.\n\n"
+        "FAQAT SHULARNI OL: ism va laqab, oila va yaqinlar, "
+        "ish yoki o'qish, doimiy qiziqish va hobbi, uzoq "
+        "muddatli maqsad va loyihalar, doimiy odat va "
+        "afzalliklar, muhim sana (tug'ilgan kun va h.k.).\n\n"
+        "OLMA: bir martalik savol va so'rovlar; vaqtinchalik "
+        "holat (bugungi kayfiyat, nima yeyotgani, charchagani); "
+        "eslatmalar va vazifalar; salomlashish va oddiy "
+        "suhbat; sinov xabarlari; parol, karta raqami, hujjat "
+        "ma'lumotlari; taxmin va xulosalar (faqat aniq "
+        "aytilganini ol).\n\n"
+        "Mavjud faktlarni yoki ular bilan bir xil ma'noni "
+        "takrorlama. Shubha bo'lsa, olma. Ko'pi bilan 3 ta. "
+        "Har fakt qisqa, bitta gap. JSON ro'yxat qaytar: "
+        '["fakt", ...]. Hech narsa bo\'lmasa [].\n\n'
         "Mavjud: " + json.dumps(old, ensure_ascii=False) +
-        "\n\nSuhbat:\n" + text)
+        "\n\nXabarlar:\n" + text)
     r = await gen(
         model=MODEL, contents=prompt,
         config=types.GenerateContentConfig(
@@ -176,9 +190,10 @@ async def maybe_extract(cid):
         new = json.loads(r.text)
     except Exception:
         return
-    for f in new[:5]:
+    for f in new[:3]:
         if isinstance(f, str) and f.strip() and f not in old:
-            await asyncio.to_thread(save_fact, cid, f.strip())         
+            await asyncio.to_thread(
+                save_fact, cid, f.strip()[:200])         
                 
 # ---------- asosiy ----------
 
@@ -310,9 +325,18 @@ def list_facts(cid):
          .eq("chat_id", cid).order("id").execute())
     return r.data
 
-def del_fact(cid, fid):
-    (db.table("facts").delete()
-     .eq("id", fid).eq("chat_id", cid).execute())
+async def fact_del(update, ctx):
+    raw = " ".join(ctx.args).replace(",", " ")
+    ids = [int(x) for x in raw.split() if x.isdigit()]
+    if not ids:
+        await update.message.reply_text(
+            "Masalan: /fakt_ochir 5, 8, 12")
+        return
+    for fid in ids:
+        await asyncio.to_thread(
+            del_fact, update.message.chat_id, fid)
+    await update.message.reply_text(
+        f"O'chirildi: {len(ids)} ta.")
 
 async def memory_cmd(update, ctx):
     rows = await asyncio.to_thread(
