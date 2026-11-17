@@ -16,6 +16,7 @@ TZ = timezone(timedelta(hours=5))  # Toshkent
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 HISTORY = 16
 EXTRACT_EVERY = 10
+SUMMARY_EVERY = 30
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
 ALLOWED = {int(x) for x in
@@ -124,6 +125,8 @@ def save_fact(cid, fact):
 def wipe(cid):
     db.table("messages").delete().eq("chat_id", cid).execute()
     db.table("facts").delete().eq("chat_id", cid).execute()
+    (db.table("settings").update({"summary": None})
+     .eq("chat_id", cid).execute())
 
 def save_reminder(cid, task, when_utc):
     db.table("reminders").insert(
@@ -169,6 +172,25 @@ def set_proactive(cid, on):
         {"chat_id": cid, "proactive": on},
         on_conflict="chat_id").execute()
 
+def get_recent(cid, limit):
+    r = (db.table("messages").select("role,content")
+         .eq("chat_id", cid).order("id", desc=True)
+         .limit(limit).execute())
+    return list(reversed(r.data))
+
+def get_summary(cid):
+    r = (db.table("settings").select("summary")
+         .eq("chat_id", cid).execute())
+    return (r.data[0].get("summary") or "") if r.data else ""
+
+def set_summary(cid, text):
+    (db.table("settings").update({"summary": text})
+     .eq("chat_id", cid).execute())
+
+def update_fact(cid, fid, text):
+    (db.table("facts").update({"fact": text})
+     .eq("id", fid).eq("chat_id", cid).execute())
+
 # ---------- ovoz ----------
 async def tts(text):
     buf = bytearray()
@@ -178,46 +200,108 @@ async def tts(text):
     return bytes(buf)
 
 # ---------- uzoq xotira ----------
-async def maybe_extract(cid):
-    n = await asyncio.to_thread(count_user, cid)
-    if n == 0 or n % EXTRACT_EVERY:
-        return
+async def update_facts(cid):
     hist = await asyncio.to_thread(get_history, cid)
-    old = await asyncio.to_thread(get_facts, cid)
+    rows = (await asyncio.to_thread(list_facts, cid))[-80:]
+    old = "\n".join(f'{i}. {x["fact"]}'
+                    for i, x in enumerate(rows, 1)) or "(hali yo'q)"
     text = "\n".join(h["content"] for h in hist
                      if h["role"] == "user")
     prompt = (
-        "Quyida foydalanuvchining oxirgi xabarlari. Ulardan "
-        "foydalanuvchi haqida UZOQ MUDDATGA (oylar, yillar) "
-        "esda qolishi kerak bo'lgan faktlarni ajrat.\n\n"
-        "FAQAT SHULARNI OL: ism va laqab, oila va yaqinlar, "
-        "ish yoki o'qish, doimiy qiziqish va hobbi, uzoq "
-        "muddatli maqsad va loyihalar, doimiy odat va "
-        "afzalliklar, muhim sana (tug'ilgan kun va h.k.).\n\n"
-        "OLMA: bir martalik savol va so'rovlar; vaqtinchalik "
-        "holat (bugungi kayfiyat, nima yeyotgani, charchagani); "
-        "eslatmalar va vazifalar; salomlashish va oddiy "
-        "suhbat; sinov xabarlari; parol, karta raqami, hujjat "
+        "Sen foydalanuvchi haqidagi UZOQ MUDDATLI faktlar "
+        "ro'yxatini yuritasan. Quyida mavjud raqamlangan "
+        "faktlar va foydalanuvchining oxirgi xabarlari.\n\n"
+        "FAKTGA KIRADI: ism va laqab, oila va yaqinlar, ish "
+        "yoki o'qish, doimiy qiziqish va hobbi, uzoq muddatli "
+        "maqsad va loyihalar, doimiy odat va afzalliklar, "
+        "muhim sana.\n"
+        "KIRMAYDI: bir martalik savol; vaqtinchalik holat "
+        "(kayfiyat, nima yeyotgani); eslatma va vazifalar; "
+        "salomlashish; sinov xabarlari; parol, karta, hujjat "
         "ma'lumotlari; taxmin va xulosalar (faqat aniq "
-        "aytilganini ol).\n\n"
-        "Mavjud faktlarni yoki ular bilan bir xil ma'noni "
-        "takrorlama. Shubha bo'lsa, olma. Ko'pi bilan 3 ta. "
-        "Har fakt qisqa, bitta gap. JSON ro'yxat qaytar: "
-        '["fakt", ...]. Hech narsa bo\'lmasa [].\n\n'
-        "Mavjud: " + json.dumps(old, ensure_ascii=False) +
-        "\n\nXabarlar:\n" + text)
+        "aytilgani).\n\n"
+        "AMALLAR:\n"
+        '- "add": mavjud faktlarda YO\'Q yangi fakt.\n'
+        '- "replace": foydalanuvchi mavjud faktni aniq '
+        "o'zgartirgan yoki yangilagan bo'lsa (masalan afzallik "
+        "o'zgargan): {\"n\": raqam, \"fact\": \"yangi matn\"}.\n"
+        '- "delete": foydalanuvchi mavjud fakt endi to\'g\'ri '
+        "emasligini aniq aytgan bo'lsa, yoki fakt aynan "
+        "boshqasining takrori bo'lsa: raqam.\n"
+        "Bir ma'noli faktni qayta qo'shma. Shubha bo'lsa "
+        "hech narsa qilma. Har ro'yxatda ko'pi bilan 3 ta. "
+        "Har fakt qisqa, bitta gap.\n\n"
+        "FAQAT JSON qaytar: "
+        '{"add": [], "replace": [], "delete": []}\n\n'
+        "Mavjud faktlar:\n" + old +
+        "\n\nFoydalanuvchi xabarlari:\n" + text)
     r = await gen(
         model=MODEL, contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json"))
     try:
-        new = json.loads(r.text)
+        d = json.loads(r.text)
     except Exception:
         return
-    for f in new[:3]:
-        if isinstance(f, str) and f.strip() and f not in old:
+    if not isinstance(d, dict):
+        return
+    for it in (d.get("replace") or [])[:3]:
+        if not isinstance(it, dict):
+            continue
+        n, f = it.get("n"), it.get("fact")
+        if (isinstance(n, int) and 1 <= n <= len(rows)
+                and isinstance(f, str) and f.strip()):
+            await asyncio.to_thread(
+                update_fact, cid, rows[n - 1]["id"],
+                f.strip()[:200])
+    for n in (d.get("delete") or [])[:3]:
+        if isinstance(n, int) and 1 <= n <= len(rows):
+            await asyncio.to_thread(
+                del_fact, cid, rows[n - 1]["id"])
+    have = {x["fact"] for x in rows}
+    for f in (d.get("add") or [])[:3]:
+        if (isinstance(f, str) and f.strip()
+                and f.strip() not in have):
             await asyncio.to_thread(
                 save_fact, cid, f.strip()[:200])
+
+async def make_summary(cid):
+    msgs = await asyncio.to_thread(get_recent, cid, 60)
+    old = await asyncio.to_thread(get_summary, cid)
+    text = "\n".join(
+        ("Foydalanuvchi: " if m["role"] == "user" else "Reze: ")
+        + m["content"] for m in msgs)
+    prompt = (
+        "Quyida oldingi xulosa va yangi suhbat. Ularni "
+        "birlashtirib, foydalanuvchi bilan suhbatlar haqida "
+        "yangilangan qisqa xulosa yoz (ko'pi bilan 6 gap, "
+        "o'zbek tilida): nimalar haqida gaplashildi, "
+        "foydalanuvchi nima bilan band, muhim voqealar, "
+        "kayfiyat o'zgarishlari, hal bo'lmagan masalalar. "
+        "Mayda tafsilot, salomlashish va bajarilgan "
+        "eslatmalarni yozma. Parol, karta kabi maxfiy "
+        "narsalarni yozma. Faqat xulosa matnini qaytar.\n\n"
+        "Oldingi xulosa: " + (old or "(yo'q)") +
+        "\n\nYangi suhbat:\n" + text)
+    r = await gen(model=MODEL, contents=prompt)
+    out = (r.text or "").strip()
+    if out:
+        await asyncio.to_thread(set_summary, cid, out[:1500])
+
+async def maybe_extract(cid):
+    n = await asyncio.to_thread(count_user, cid)
+    if n == 0:
+        return
+    if n % EXTRACT_EVERY == 0:
+        try:
+            await update_facts(cid)
+        except Exception as e:
+            print("FAKT xato:", e)
+    if n % SUMMARY_EVERY == 0:
+        try:
+            await make_summary(cid)
+        except Exception as e:
+            print("XULOSA xato:", e)
 
 # ---------- asosiy ----------
 async def handle(update, ctx):
@@ -233,6 +317,11 @@ async def handle(update, ctx):
         if facts:
             system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                        + "\n- ".join(facts))
+        summ = await asyncio.to_thread(get_summary, cid)
+        if summ:
+            system += ("\n\nOldingi suhbatlar xulosasi (faqat "
+                       "kontekst uchun, o'zing qayta eslatib "
+                       "turma):\n" + summ)
         contents = [types.Content(
             role="user" if h["role"] == "user" else "model",
             parts=[types.Part(text=h["content"])])
@@ -432,6 +521,10 @@ async def greet(app, cid, kind):
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))
+    summ = await asyncio.to_thread(get_summary, cid)
+    if summ:
+        system += ("\n\nOldingi suhbatlar xulosasi (faqat "
+                   "kontekst uchun):\n" + summ)
     hist = "\n".join(f'{h["role"]}: {h["content"]}'
                      for h in history[-8:])
     prompt = SLOT_PROMPTS[kind] + "\n\nOxirgi suhbat:\n" + hist
