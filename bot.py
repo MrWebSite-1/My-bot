@@ -220,6 +220,75 @@ async def handle(update, ctx):
             try:
                 local = datetime.strptime(
                     rem["time"], "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
+                if local <= 
+                
+# ---------- asosiy ----------
+
+async def handle(update, ctx):
+    msg = update.message
+    cid = msg.chat_id
+    await asyncio.to_thread(ensure_settings, cid)
+    try:
+        history = await asyncio.to_thread(get_history, cid)
+        facts = await asyncio.to_thread(get_facts, cid)
+        now = datetime.now(TZ)
+        system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
+                  + now.strftime("%A, %Y-%m-%d %H:%M"))
+        if facts:
+            system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
+                       + "\n- ".join(facts))
+        contents = [types.Content(
+            role="user" if h["role"] == "user" else "model",
+            parts=[types.Part(text=h["content"])])
+            for h in history]
+        while contents and contents[0].role == "model":
+            contents.pop(0)
+
+        if msg.voice:
+            f = await msg.voice.get_file()
+            data = bytes(await f.download_as_bytearray())
+            parts = [types.Part.from_bytes(
+                data=data, mime_type="audio/ogg"),
+                types.Part(text="(ovozli xabar)")]
+        elif msg.photo:
+            f = await msg.photo[-1].get_file()
+            data = bytes(await f.download_as_bytearray())
+            cap = msg.caption or "Bu rasmda nima bor?"
+            parts = [types.Part.from_bytes(
+                data=data, mime_type="image/jpeg"),
+                types.Part(text=cap)]
+        else:
+            parts = [types.Part(text=msg.text)]
+        contents.append(types.Content(role="user", parts=parts))
+
+        cfg = types.GenerateContentConfig(
+            system_instruction=system,
+            response_mime_type="application/json")
+        r = await client.aio.models.generate_content(
+            model=MODEL, contents=contents, config=cfg)
+
+        if msg.photo:
+            fallback = "[rasm] " + (msg.caption or "")
+        else:
+            fallback = msg.text or "[ovozli xabar]"
+        try:
+            j = json.loads(r.text)
+            answer = j.get("answer") or "..."
+            if msg.photo:
+                user_text = fallback
+            else:
+                user_text = j.get("transcript") or fallback
+            rem = j.get("reminder")
+        except Exception:
+            answer, rem = r.text, None
+            user_text = fallback
+
+        extra = ""
+        if isinstance(rem, dict) and rem.get("task") \
+                and rem.get("time"):
+            try:
+                local = datetime.strptime(
+                    rem["time"], "%Y-%m-%d %H:%M").replace(tzinfo=TZ)
                 if local <= datetime.now(TZ):
                     extra = ("\n\n⚠️ Bu vaqt o'tib ketgan, "
                              "eslatma qo'yilmadi.")
