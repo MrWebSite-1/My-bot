@@ -18,6 +18,27 @@ UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 HISTORY = 16
 EXTRACT_EVERY = 10
 
+FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+
+async def gen(**kw):
+    kw.pop("model", None)
+    last = None
+    for model in FALLBACKS:
+        for attempt in range(2):
+            try:
+                return await client.aio.models.generate_content(
+                    model=model, **kw)
+            except Exception as e:
+                last = e
+                s = str(e)
+                if any(k in s for k in
+                       ("503", "UNAVAILABLE", "429", "500")):
+                    print("QAYTA URINISH:", model, s[:80])
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+                raise
+    raise last
+
 NAME = "Reze"
 BASE = (
     f"Sening isming {NAME}. Sen foydalanuvchining yaqin AI "
@@ -141,7 +162,7 @@ async def maybe_extract(cid):
         '["fakt", ...]. Yangi fakt bo\'lmasa [].\n\n'
         "Mavjud: " + json.dumps(old, ensure_ascii=False) +
         "\n\nSuhbat:\n" + text)
-    r = await client.aio.models.generate_content(
+    r = await gen(
         model=MODEL, contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json"))
@@ -195,7 +216,7 @@ async def handle(update, ctx):
         cfg = types.GenerateContentConfig(
             system_instruction=system,
             response_mime_type="application/json")
-        r = await client.aio.models.generate_content(
+        r = await gen(
             model=MODEL, contents=contents, config=cfg)
 
         if msg.photo:
@@ -278,7 +299,7 @@ async def cancel(update, ctx):
     await update.message.reply_text("Bekor qilindi.")
 
 # ---------- o'zi yozishi ----------
-SLOTS = [("ertalab", 9), ("kechqurun", 20)]
+SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
                "yoz (1-2 gap). Mos bo'lsa, oxirgi suhbatdan "
@@ -321,7 +342,7 @@ async def greet(app, cid, kind):
     hist = "\n".join(f'{h["role"]}: {h["content"]}'
                      for h in history[-8:])
     prompt = SLOT_PROMPTS[kind] + "\n\nOxirgi suhbat:\n" + hist
-    r = await client.aio.models.generate_content(
+    r = await gen(
         model=MODEL, contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=system))
