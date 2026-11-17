@@ -18,6 +18,12 @@ UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 HISTORY = 16
 EXTRACT_EVERY = 10
 
+ALLOWED = {int(x) for x in
+           os.environ.get("ALLOWED_IDS", "").split(",")
+           if x.strip()}
+ACCESS = (filters.User(user_id=list(ALLOWED))
+          if ALLOWED else filters.ALL)
+
 FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
 async def gen(**kw):
@@ -406,15 +412,21 @@ async def start_loop(app):
     app.bot_data["t1"] = asyncio.create_task(reminder_loop(app))
     app.bot_data["t2"] = asyncio.create_task(proactive_loop(app))
 
+async def my_id(update, ctx):
+    await update.message.reply_text(
+        f"Sizning ID: {update.effective_user.id}")
+
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
        .post_init(start_loop).build())
-app.add_handler(CommandHandler("unut", forget))
-app.add_handler(CommandHandler("eslatmalar", list_rem))
-app.add_handler(CommandHandler("bekor", cancel))
-app.add_handler(CommandHandler("xabar_bor", msg_on))
-app.add_handler(CommandHandler("xabar_yoq", msg_off))
+app.add_handler(CommandHandler("id", my_id))
+app.add_handler(CommandHandler("unut", forget, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "eslatmalar", list_rem, filters=ACCESS))
+app.add_handler(CommandHandler("bekor", cancel, filters=ACCESS))
+app.add_handler(CommandHandler("xabar_bor", msg_on, filters=ACCESS))
+app.add_handler(CommandHandler("xabar_yoq", msg_off, filters=ACCESS))
 app.add_handler(MessageHandler(
-    filters.VOICE | filters.PHOTO |
-    (filters.TEXT & ~filters.COMMAND), handle))
+    (filters.VOICE | filters.PHOTO |
+     (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
 app.run_polling()
