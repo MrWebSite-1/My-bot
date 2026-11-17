@@ -375,23 +375,31 @@ async def memory_cmd(update, ctx):
         await update.message.reply_text(
             "Hozircha siz haqingizda hech narsa saqlanmagan.")
         return
-    text = "\n".join(f'{x["id"]}. {x["fact"]}' for x in rows)
+    text = "\n".join(f'{i}. {x["fact"]}'
+                     for i, x in enumerate(rows, 1))
     await update.message.reply_text(
-        text + "\n\nO'chirish: /fakt_ochir <raqam>\n"
+        text + "\n\nO'chirish: /fakt_ochir 2, 5\n"
         "Qo'shish: /eslab_qol <matn>")
 
 async def fact_del(update, ctx):
+    cid = update.message.chat_id
     raw = " ".join(ctx.args).replace(",", " ")
-    ids = [int(x) for x in raw.split() if x.isdigit()]
+    nums = [int(x) for x in raw.split() if x.isdigit()]
+    if not nums:
+        await update.message.reply_text(
+            "Masalan: /fakt_ochir 2, 5, 7")
+        return
+    rows = await asyncio.to_thread(list_facts, cid)
+    ids = [rows[n - 1]["id"] for n in dict.fromkeys(nums)
+           if 1 <= n <= len(rows)]
     if not ids:
         await update.message.reply_text(
-            "Masalan: /fakt_ochir 5, 8, 12")
+            "Bunday raqam yo'q. Ro'yxat: /xotira")
         return
     for fid in ids:
-        await asyncio.to_thread(
-            del_fact, update.message.chat_id, fid)
+        await asyncio.to_thread(del_fact, cid, fid)
     await update.message.reply_text(
-        f"O'chirildi: {len(ids)} ta.")
+        f"O'chirildi: {len(ids)} ta. Yangi ro'yxat: /xotira")
 
 async def fact_add(update, ctx):
     text = " ".join(ctx.args).strip()
@@ -481,12 +489,7 @@ async def start_loop(app):
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
-       .post_init(start_loop)
-       .connect_timeout(30).read_timeout(30)
-       .write_timeout(30).pool_timeout(30)
-       .get_updates_connect_timeout(30)
-       .get_updates_read_timeout(30)
-       .build())
+       .post_init(start_loop).build())
 app.add_handler(CommandHandler("id", my_id))
 app.add_handler(CommandHandler("unut", forget, filters=ACCESS))
 app.add_handler(CommandHandler(
