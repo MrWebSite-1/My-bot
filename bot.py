@@ -304,6 +304,48 @@ async def cancel(update, ctx):
     await asyncio.to_thread(del_rem, update.message.chat_id, rid)
     await update.message.reply_text("Bekor qilindi.")
 
+# ---------- xotirani boshqarish ----------
+def list_facts(cid):
+    r = (db.table("facts").select("id,fact")
+         .eq("chat_id", cid).order("id").execute())
+    return r.data
+
+def del_fact(cid, fid):
+    (db.table("facts").delete()
+     .eq("id", fid).eq("chat_id", cid).execute())
+
+async def memory_cmd(update, ctx):
+    rows = await asyncio.to_thread(
+        list_facts, update.message.chat_id)
+    if not rows:
+        await update.message.reply_text(
+            "Hozircha siz haqingizda hech narsa saqlanmagan.")
+        return
+    text = "\n".join(f'{x["id"]}. {x["fact"]}' for x in rows)
+    await update.message.reply_text(
+        text + "\n\nO'chirish: /fakt_ochir <raqam>\n"
+        "Qo'shish: /eslab_qol <matn>")
+
+async def fact_del(update, ctx):
+    try:
+        fid = int(ctx.args[0])
+    except Exception:
+        await update.message.reply_text("Masalan: /fakt_ochir 5")
+        return
+    await asyncio.to_thread(
+        del_fact, update.message.chat_id, fid)
+    await update.message.reply_text("O'chirildi.")
+
+async def fact_add(update, ctx):
+    text = " ".join(ctx.args).strip()
+    if not text:
+        await update.message.reply_text(
+            "Masalan: /eslab_qol Tug'ilgan kunim 5-may")
+        return
+    await asyncio.to_thread(
+        save_fact, update.message.chat_id, text[:300])
+    await update.message.reply_text("Eslab qoldim.")
+
 # ---------- o'zi yozishi ----------
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 SLOT_PROMPTS = {
@@ -426,6 +468,9 @@ app.add_handler(CommandHandler(
 app.add_handler(CommandHandler("bekor", cancel, filters=ACCESS))
 app.add_handler(CommandHandler("xabar_bor", msg_on, filters=ACCESS))
 app.add_handler(CommandHandler("xabar_yoq", msg_off, filters=ACCESS))
+app.add_handler(CommandHandler("xotira", memory_cmd, filters=ACCESS))
+app.add_handler(CommandHandler("fakt_ochir", fact_del, filters=ACCESS))
+app.add_handler(CommandHandler("eslab_qol", fact_add, filters=ACCESS))
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
