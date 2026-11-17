@@ -350,16 +350,6 @@ async def memory_cmd(update, ctx):
         text + "\n\nO'chirish: /fakt_ochir <raqam>\n"
         "Qo'shish: /eslab_qol <matn>")
 
-async def fact_del(update, ctx):
-    try:
-        fid = int(ctx.args[0])
-    except Exception:
-        await update.message.reply_text("Masalan: /fakt_ochir 5")
-        return
-    await asyncio.to_thread(
-        del_fact, update.message.chat_id, fid)
-    await update.message.reply_text("O'chirildi.")
-
 async def fact_add(update, ctx):
     text = " ".join(ctx.args).strip()
     if not text:
