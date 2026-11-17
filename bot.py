@@ -263,13 +263,17 @@ async def cancel(update, ctx):
     await update.message.reply_text("Bekor qilindi.")
 
 # ---------- o'zi yozishi ----------
-SLOTS = [("ertalab", 9), ("kechqurun",19)]
+SLOTS = [("ertalab", 9), ("kechqurun", 20)]
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
                "yoz (1-2 gap). Mos bo'lsa, oxirgi suhbatdan "
-               "biror narsa haqida so'ra.",
+               "biror narsa haqida so'ra. Oldingi suhbatdagi "
+               "eski eslatma yoki bajarilgan ishlarni qayta "
+               "eslatma.",
     "kechqurun": "Foydalanuvchiga kechki qisqa, iliq xabar "
-                 "yoz: kuni qanday o'tganini so'ra (1-2 gap).",
+                 "yoz: kuni qanday o'tganini so'ra (1-2 gap). "
+                 "Oldingi suhbatdagi eski eslatma yoki "
+                 "bajarilgan ishlarni qayta eslatma.",
 }
 
 def ensure_settings(cid):
