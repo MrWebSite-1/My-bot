@@ -180,6 +180,14 @@ async def handle(update, ctx):
             parts = [types.Part.from_bytes(
                 data=data, mime_type="audio/ogg"),
                 types.Part(text="(ovozli xabar)")]
+        
+        elif msg.photo:
+            f = await msg.photo[-1].get_file()
+            data = bytes(await f.download_as_bytearray())
+            cap = msg.caption or "Bu rasmda nima bor?"
+            parts = [types.Part.from_bytes(
+                data=data, mime_type="image/jpeg"),
+                types.Part(text=cap)]
         else:
             parts = [types.Part(text=msg.text)]
         contents.append(types.Content(role="user", parts=parts))
@@ -192,12 +200,14 @@ async def handle(update, ctx):
         try:
             j = json.loads(r.text)
             answer = j.get("answer") or "..."
-            user_text = (j.get("transcript") or msg.text
-                         or "[ovozli xabar]")
+             user_text = ("[rasm] " + (msg.caption or "")
+                         if msg.photo else
+                         (j.get("transcript") or msg.text
+                          or "[ovozli xabar]"))
             rem = j.get("reminder")
         except Exception:
-            answer, rem = r.text, None
-            user_text = msg.text or "[ovozli xabar]"
+              user_text = ("[rasm]" if msg.photo else
+              (msg.text or "[ovozli xabar]"))
 
         extra = ""
         if isinstance(rem, dict) and rem.get("task") \
@@ -379,5 +389,6 @@ app.add_handler(CommandHandler("bekor", cancel))
 app.add_handler(CommandHandler("xabar_bor", msg_on))
 app.add_handler(CommandHandler("xabar_yoq", msg_off))
 app.add_handler(MessageHandler(
-    filters.VOICE | (filters.TEXT & ~filters.COMMAND), handle))
+    filters.VOICE | filters.PHOTO |
+    (filters.TEXT & ~filters.COMMAND), handle))
 app.run_polling()
