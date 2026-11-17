@@ -198,16 +198,21 @@ async def handle(update, ctx):
         r = await client.aio.models.generate_content(
             model=MODEL, contents=contents, config=cfg)
         try:
+                   try:
             j = json.loads(r.text)
             answer = j.get("answer") or "..."
-             user_text = ("[rasm] " + (msg.caption or "")
-                         if msg.photo else
-                         (j.get("transcript") or msg.text
-                          or "[ovozli xabar]"))
+            if msg.photo:
+                user_text = "[rasm] " + (msg.caption or "")
+            else:
+                user_text = (j.get("transcript") or msg.text
+                             or "[ovozli xabar]")
             rem = j.get("reminder")
         except Exception:
-              user_text = ("[rasm]" if msg.photo else
-              (msg.text or "[ovozli xabar]"))
+            answer, rem = r.text, None
+            if msg.photo:
+                user_text = "[rasm]"
+            else:
+                user_text = msg.text or "[ovozli xabar]"
 
         extra = ""
         if isinstance(rem, dict) and rem.get("task") \
