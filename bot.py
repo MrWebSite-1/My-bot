@@ -11,12 +11,12 @@ from telegram.ext import (ApplicationBuilder,
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 db = create_client(os.environ["SUPABASE_URL"],
                    os.environ["SUPABASE_KEY"])
-MODEL = "gemini-3.5-flash-lite"
 VOICE = "uz-UZ-MadinaNeural"
 TZ = timezone(timedelta(hours=5))  # Toshkent
 UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 HISTORY = 16
 EXTRACT_EVERY = 10
+SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
 ALLOWED = {int(x) for x in
            os.environ.get("ALLOWED_IDS", "").split(",")
@@ -24,6 +24,7 @@ ALLOWED = {int(x) for x in
 ACCESS = (filters.User(user_id=list(ALLOWED))
           if ALLOWED else filters.ALL)
 
+# ---------- Gemini (qayta urinish + zaxira model) ----------
 FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
 async def gen(**kw):
@@ -45,26 +46,29 @@ async def gen(**kw):
                 raise
     raise last
 
+MODEL = FALLBACKS[0]  # gen() ichida almashtiriladi
+
+# ---------- xarakter ----------
 NAME = "Reze"
 BASE = (
     f"Sening isming {NAME}. Sen foydalanuvchining yaqin AI "
-    "hamrohisan. Asosiy xarakteringu: muloyim, samimiy va "
-    "g'amxo'r. O'zbek tilida gapir va foydalanuvchiga doim hurmat bilan 'siz' deb murojaat qil ('sen' dema), lekin ohang rasmiy emas, iliq va samimiy bo'lsin. "
-    "Muloqot uslubini vaziyatga qarab moslashtir: "
-    "foydalanuvchi xafa yoki charchagan bo'lsa, yumshoq va "
-    "tinchlantiruvchi bo'l, shoshilib maslahat berma; "
-    "quvnoq yoki hazil qilsa, sen ham yengil hazil bilan "
-    "javob ber; ish yoki jiddiy savol bo'lsa, aniq, "
-    "tartibli va foydali bo'l; yutuq haqida aytsa, "
-    "chin dildan quvon. Javoblar odatda qisqa (1-3 gap), "
+    "hamrohisan. Asosiy xarakting: muloyim, samimiy va "
+    "g'amxo'r. O'zbek tilida gapir va foydalanuvchiga doim "
+    "hurmat bilan 'siz' deb murojaat qil ('sen' dema), lekin "
+    "ohang rasmiy emas, iliq va samimiy bo'lsin. Muloqot "
+    "uslubini vaziyatga qarab moslashtir: foydalanuvchi xafa "
+    "yoki charchagan bo'lsa, yumshoq va tinchlantiruvchi bo'l, "
+    "shoshilib maslahat berma; quvnoq yoki hazil qilsa, sen "
+    "ham yengil hazil bilan javob ber; ish yoki jiddiy savol "
+    "bo'lsa, aniq, tartibli va foydali bo'l; yutuq haqida "
+    "aytsa, chin dildan quvon. Javoblar odatda qisqa (1-3 gap), "
     "tabiiy va jonli bo'lsin, emojini kam ishlat. "
     "Foydalanuvchi aytgan narsalarni eslab, ular haqida "
     "vaqti-vaqti bilan qiziqib so'ra. Sun'iy ko'rinadigan "
     "maqtov va ortiqcha rasmiyatchilikdan qoch. Agar "
-    "foydalanuvchi bilmay noto'g'ri narsa aytsa yoki "
-    "o'ziga zarar qiladigan qaror qilsa, muloyimlik bilan, "
-    "lekin ochiq aytib ber. Agar so'rashsa, AI ekaningni "
-    "yashirma."
+    "foydalanuvchi bilmay noto'g'ri narsa aytsa yoki o'ziga "
+    "zarar qiladigan qaror qilsa, muloyimlik bilan, lekin "
+    "ochiq aytib ber. Agar so'rashsa, AI ekaningni yashirma."
 )
 RULES = (
     "\n\nJavobingni FAQAT JSON qilib qaytar: "
@@ -76,6 +80,7 @@ RULES = (
     "(Toshkent vaqti bilan), aks holda null. Vaqt aniq "
     "bo'lmasa reminder null qil va answer'da vaqtni so'ra.")
 
+# ---------- ping server (Render uxlab qolmasligi uchun) ----------
 class Ping(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -145,6 +150,25 @@ def del_rem(cid, rid):
     (db.table("reminders").delete()
      .eq("id", rid).eq("chat_id", cid).execute())
 
+def ensure_settings(cid):
+    db.table("settings").upsert(
+        {"chat_id": cid}, on_conflict="chat_id",
+        ignore_duplicates=True).execute()
+
+def proactive_chats():
+    r = (db.table("settings").select("chat_id,last_slot")
+         .eq("proactive", True).execute())
+    return r.data
+
+def set_slot(cid, slot):
+    (db.table("settings").update({"last_slot": slot})
+     .eq("chat_id", cid).execute())
+
+def set_proactive(cid, on):
+    db.table("settings").upsert(
+        {"chat_id": cid, "proactive": on},
+        on_conflict="chat_id").execute()
+
 # ---------- ovoz ----------
 async def tts(text):
     buf = bytearray()
@@ -193,10 +217,9 @@ async def maybe_extract(cid):
     for f in new[:3]:
         if isinstance(f, str) and f.strip() and f not in old:
             await asyncio.to_thread(
-                save_fact, cid, f.strip()[:200])         
-                
-# ---------- asosiy ----------
+                save_fact, cid, f.strip()[:200])
 
+# ---------- asosiy ----------
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
@@ -319,11 +342,43 @@ async def cancel(update, ctx):
     await asyncio.to_thread(del_rem, update.message.chat_id, rid)
     await update.message.reply_text("Bekor qilindi.")
 
+async def msg_on(update, ctx):
+    await asyncio.to_thread(
+        set_proactive, update.message.chat_id, True)
+    await update.message.reply_text(
+        "Yaxshi, ba'zan o'zim yozib turaman.")
+
+async def msg_off(update, ctx):
+    await asyncio.to_thread(
+        set_proactive, update.message.chat_id, False)
+    await update.message.reply_text(
+        "Xo'p, endi o'zim yozmayman. Qaytarish: /xabar_bor")
+
+async def my_id(update, ctx):
+    await update.message.reply_text(
+        f"Sizning ID: {update.effective_user.id}")
+
 # ---------- xotirani boshqarish ----------
 def list_facts(cid):
     r = (db.table("facts").select("id,fact")
          .eq("chat_id", cid).order("id").execute())
     return r.data
+
+def del_fact(cid, fid):
+    (db.table("facts").delete()
+     .eq("id", fid).eq("chat_id", cid).execute())
+
+async def memory_cmd(update, ctx):
+    rows = await asyncio.to_thread(
+        list_facts, update.message.chat_id)
+    if not rows:
+        await update.message.reply_text(
+            "Hozircha siz haqingizda hech narsa saqlanmagan.")
+        return
+    text = "\n".join(f'{x["id"]}. {x["fact"]}' for x in rows)
+    await update.message.reply_text(
+        text + "\n\nO'chirish: /fakt_ochir <raqam>\n"
+        "Qo'shish: /eslab_qol <matn>")
 
 async def fact_del(update, ctx):
     raw = " ".join(ctx.args).replace(",", " ")
@@ -338,18 +393,6 @@ async def fact_del(update, ctx):
     await update.message.reply_text(
         f"O'chirildi: {len(ids)} ta.")
 
-async def memory_cmd(update, ctx):
-    rows = await asyncio.to_thread(
-        list_facts, update.message.chat_id)
-    if not rows:
-        await update.message.reply_text(
-            "Hozircha siz haqingizda hech narsa saqlanmagan.")
-        return
-    text = "\n".join(f'{x["id"]}. {x["fact"]}' for x in rows)
-    await update.message.reply_text(
-        text + "\n\nO'chirish: /fakt_ochir <raqam>\n"
-        "Qo'shish: /eslab_qol <matn>")
-
 async def fact_add(update, ctx):
     text = " ".join(ctx.args).strip()
     if not text:
@@ -360,8 +403,7 @@ async def fact_add(update, ctx):
         save_fact, update.message.chat_id, text[:300])
     await update.message.reply_text("Eslab qoldim.")
 
-# ---------- o'zi yozishi ----------
-SLOTS = [("ertalab", 9), ("kechqurun", 21)]
+# ---------- o'zi birinchi yozishi ----------
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
                "yoz (1-2 gap). Mos bo'lsa, oxirgi suhbatdan "
@@ -373,25 +415,6 @@ SLOT_PROMPTS = {
                  "Oldingi suhbatdagi eski eslatma yoki "
                  "bajarilgan ishlarni qayta eslatma.",
 }
-
-def ensure_settings(cid):
-    db.table("settings").upsert(
-        {"chat_id": cid}, on_conflict="chat_id",
-        ignore_duplicates=True).execute()
-
-def proactive_chats():
-    r = (db.table("settings").select("chat_id,last_slot")
-         .eq("proactive", True).execute())
-    return r.data
-
-def set_slot(cid, slot):
-    (db.table("settings").update({"last_slot": slot})
-     .eq("chat_id", cid).execute())
-
-def set_proactive(cid, on):
-    db.table("settings").upsert(
-        {"chat_id": cid, "proactive": on},
-        on_conflict="chat_id").execute()
 
 async def greet(app, cid, kind):
     history = await asyncio.to_thread(get_history, cid)
@@ -436,18 +459,6 @@ async def proactive_loop(app):
             print("PROAKTIV xato:", e)
         await asyncio.sleep(300)
 
-async def msg_on(update, ctx):
-    await asyncio.to_thread(
-        set_proactive, update.message.chat_id, True)
-    await update.message.reply_text(
-        "Yaxshi, ba'zan o'zim yozib turaman.")
-
-async def msg_off(update, ctx):
-    await asyncio.to_thread(
-        set_proactive, update.message.chat_id, False)
-    await update.message.reply_text(
-        "Xo'p, endi o'zim yozmayman. Qaytarish: /xabar_bor")
-
 # ---------- eslatma sikli ----------
 async def reminder_loop(app):
     while True:
@@ -468,10 +479,6 @@ async def start_loop(app):
     app.bot_data["t1"] = asyncio.create_task(reminder_loop(app))
     app.bot_data["t2"] = asyncio.create_task(proactive_loop(app))
 
-async def my_id(update, ctx):
-    await update.message.reply_text(
-        f"Sizning ID: {update.effective_user.id}")
-
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
        .post_init(start_loop).build())
@@ -482,9 +489,12 @@ app.add_handler(CommandHandler(
 app.add_handler(CommandHandler("bekor", cancel, filters=ACCESS))
 app.add_handler(CommandHandler("xabar_bor", msg_on, filters=ACCESS))
 app.add_handler(CommandHandler("xabar_yoq", msg_off, filters=ACCESS))
-app.add_handler(CommandHandler("xotira", memory_cmd, filters=ACCESS))
-app.add_handler(CommandHandler("fakt_ochir", fact_del, filters=ACCESS))
-app.add_handler(CommandHandler("eslab_qol", fact_add, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "xotira", memory_cmd, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "fakt_ochir", fact_del, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "eslab_qol", fact_add, filters=ACCESS))
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
