@@ -481,7 +481,12 @@ async def start_loop(app):
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
-       .post_init(start_loop).build())
+       .post_init(start_loop)
+       .connect_timeout(30).read_timeout(30)
+       .write_timeout(30).pool_timeout(30)
+       .get_updates_connect_timeout(30)
+       .get_updates_read_timeout(30)
+       .build())
 app.add_handler(CommandHandler("id", my_id))
 app.add_handler(CommandHandler("unut", forget, filters=ACCESS))
 app.add_handler(CommandHandler(
