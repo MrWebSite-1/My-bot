@@ -17,6 +17,8 @@ UTC_FMT = "%Y-%m-%dT%H:%M:%SZ"
 HISTORY = 16
 EXTRACT_EVERY = 10
 SUMMARY_EVERY = 30
+KEEP_DAYS = 30
+STATE = {}
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
 ALLOWED = {int(x) for x in
@@ -124,9 +126,11 @@ def count_user(cid):
          .eq("chat_id", cid).eq("role", "user").execute())
     return r.count or 0
 
-def save_fact(cid, fact):
-    db.table("facts").insert(
-        {"chat_id": cid, "fact": fact}).execute()
+def save_fact(cid, fact, until=None):
+    row = {"chat_id": cid, "fact": fact}
+    if until:
+        row["expires_at"] = until
+    db.table("facts").insert(row).execute()
 
 def wipe(cid):
     db.table("messages").delete().eq("chat_id", cid).execute()
@@ -193,9 +197,18 @@ def set_summary(cid, text):
     (db.table("settings").update({"summary": text})
      .eq("chat_id", cid).execute())
 
-def update_fact(cid, fid, text):
-    (db.table("facts").update({"fact": text})
+def update_fact(cid, fid, text, until=None):
+    (db.table("facts")
+     .update({"fact": text, "expires_at": until})
      .eq("id", fid).eq("chat_id", cid).execute())
+
+def cleanup_db():
+    now = datetime.now(timezone.utc)
+    (db.table("facts").delete()
+     .lt("expires_at", now.strftime(UTC_FMT)).execute())
+    old = (now - timedelta(days=KEEP_DAYS)).strftime(UTC_FMT)
+    (db.table("messages").delete()
+     .lt("created_at", old).execute())
 
 # ---------- ovoz ----------
 async def tts(text):
@@ -206,37 +219,57 @@ async def tts(text):
     return bytes(buf)
 
 # ---------- uzoq xotira ----------
+def norm_item(it):
+    if isinstance(it, str):
+        return (it.strip()[:200] or None), None
+    if isinstance(it, dict):
+        f, u = it.get("fact"), it.get("until")
+        if isinstance(f, str) and f.strip():
+            try:
+                datetime.strptime(u, "%Y-%m-%d")
+            except Exception:
+                u = None
+            return f.strip()[:200], u
+    return None, None
+
 async def update_facts(cid):
     hist = await asyncio.to_thread(get_recent, cid, 30)
     rows = (await asyncio.to_thread(list_facts, cid))[-80:]
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
     old = "\n".join(f'{i}. {x["fact"]}'
                     for i, x in enumerate(rows, 1)) or "(hali yo'q)"
     text = "\n".join(h["content"] for h in hist
                      if h["role"] == "user")
     prompt = (
-        "Sen foydalanuvchi haqidagi UZOQ MUDDATLI faktlar "
-        "ro'yxatini yuritasan. Quyida mavjud raqamlangan "
-        "faktlar va foydalanuvchining oxirgi xabarlari.\n\n"
-        "FAKTGA KIRADI: ism va laqab, oila va yaqinlar, ish "
-        "yoki o'qish, doimiy qiziqish va hobbi, uzoq muddatli "
+        "Sen foydalanuvchi haqidagi faktlar ro'yxatini "
+        "yuritasan. Quyida mavjud raqamlangan faktlar va "
+        "foydalanuvchining oxirgi xabarlari.\n\n"
+        "DOIMIY FAKT: ism va laqab, oila va yaqinlar, ish yoki "
+        "o'qish, doimiy qiziqish va hobbi, uzoq muddatli "
         "maqsad va loyihalar, doimiy odat va afzalliklar, "
         "muhim sana.\n"
-        "KIRMAYDI: bir martalik savol; vaqtinchalik holat "
-        "(kayfiyat, nima yeyotgani); eslatma va vazifalar; "
-        "salomlashish; sinov xabarlari; parol, karta, hujjat "
-        "ma'lumotlari; taxmin va xulosalar (faqat aniq "
-        "aytilgani).\n\n"
+        "MUDDATLI FAKT: aniq sanasi bor kelgusi voqea "
+        "(imtihon, safar, uchrashuv, topshiriq muddati). "
+        "Unga \"until\" qo'sh: voqeadan keyingi kun "
+        "(YYYY-MM-DD). Bugungi sana: " + today + ".\n"
+        "KIRMAYDI: bir martalik savol; sanasiz vaqtinchalik "
+        "holat (kayfiyat, nima yeyotgani); eslatma va "
+        "vazifalar; salomlashish; sinov xabarlari; parol, "
+        "karta, hujjat ma'lumotlari; taxmin va xulosalar "
+        "(faqat aniq aytilgani).\n\n"
         "AMALLAR:\n"
-        '- "add": mavjud faktlarda YO\'Q yangi fakt.\n'
+        '- "add": mavjud faktlarda yo\'q yangi fakt.\n'
         '- "replace": foydalanuvchi mavjud faktni aniq '
-        "o'zgartirgan yoki yangilagan bo'lsa (masalan afzallik "
-        "o'zgargan): {\"n\": raqam, \"fact\": \"yangi matn\"}.\n"
+        "o'zgartirgan yoki yangilagan bo'lsa: "
+        '{"n": raqam, "fact": "yangi matn", "until": null}.\n'
         '- "delete": foydalanuvchi mavjud fakt endi to\'g\'ri '
-        "emasligini aniq aytgan bo'lsa, yoki fakt aynan "
-        "boshqasining takrori bo'lsa: raqam.\n"
-        "Bir ma'noli faktni qayta qo'shma. Shubha bo'lsa "
-        "hech narsa qilma. Har ro'yxatda ko'pi bilan 3 ta. "
-        "Har fakt qisqa, bitta gap.\n\n"
+        "emasligini aniq aytgan bo'lsa yoki fakt boshqasining "
+        "takrori bo'lsa: raqam.\n"
+        "add elementi oddiy matn YOKI "
+        '{"fact": "...", "until": "YYYY-MM-DD"} bo\'lishi '
+        "mumkin. Bir ma'noli faktni qayta qo'shma. Shubha "
+        "bo'lsa hech narsa qilma. Har ro'yxatda ko'pi bilan "
+        "3 ta. Har fakt qisqa, bitta gap.\n\n"
         "FAQAT JSON qaytar: "
         '{"add": [], "replace": [], "delete": []}\n\n'
         "Mavjud faktlar:\n" + old +
@@ -254,22 +287,20 @@ async def update_facts(cid):
     for it in (d.get("replace") or [])[:3]:
         if not isinstance(it, dict):
             continue
-        n, f = it.get("n"), it.get("fact")
-        if (isinstance(n, int) and 1 <= n <= len(rows)
-                and isinstance(f, str) and f.strip()):
+        n = it.get("n")
+        f, u = norm_item(it)
+        if isinstance(n, int) and 1 <= n <= len(rows) and f:
             await asyncio.to_thread(
-                update_fact, cid, rows[n - 1]["id"],
-                f.strip()[:200])
+                update_fact, cid, rows[n - 1]["id"], f, u)
     for n in (d.get("delete") or [])[:3]:
         if isinstance(n, int) and 1 <= n <= len(rows):
             await asyncio.to_thread(
                 del_fact, cid, rows[n - 1]["id"])
     have = {x["fact"] for x in rows}
-    for f in (d.get("add") or [])[:3]:
-        if (isinstance(f, str) and f.strip()
-                and f.strip() not in have):
-            await asyncio.to_thread(
-                save_fact, cid, f.strip()[:200])
+    for it in (d.get("add") or [])[:3]:
+        f, u = norm_item(it)
+        if f and f not in have:
+            await asyncio.to_thread(save_fact, cid, f, u)
 
 async def make_summary(cid):
     msgs = await asyncio.to_thread(get_recent, cid, 60)
@@ -401,21 +432,25 @@ async def handle(update, ctx):
 
         if isinstance(mem, dict):
             try:
-                saved = forgot = 0
+                saved, gone, seen = [], [], set()
                 for f in (mem.get("remember") or [])[:2]:
                     if isinstance(f, str) and f.strip():
+                        t = f.strip()[:200]
                         await asyncio.to_thread(
-                            save_fact, cid, f.strip()[:200])
-                        saved += 1
+                            save_fact, cid, t)
+                        saved.append(t)
                 for n in (mem.get("forget") or [])[:3]:
-                    if isinstance(n, int) and 1 <= n <= len(frows):
+                    if (isinstance(n, int) and n not in seen
+                            and 1 <= n <= len(frows)):
+                        seen.add(n)
+                        row = frows[n - 1]
                         await asyncio.to_thread(
-                            del_fact, cid, frows[n - 1]["id"])
-                        forgot += 1
-                if saved:
-                    extra += "\n\n🧠 Eslab qoldim."
-                if forgot:
-                    extra += "\n\n🗑 Xotiradan olib tashladim."
+                            del_fact, cid, row["id"])
+                        gone.append(row["fact"])
+                for t in saved:
+                    extra += f"\n\n🧠 Eslab qoldim: «{t}»"
+                for t in gone:
+                    extra += f"\n\n🗑 Olib tashladim: «{t}»"
             except Exception as e:
                 print("XOTIRA xato:", e)
 
@@ -479,7 +514,7 @@ async def my_id(update, ctx):
 
 # ---------- xotirani boshqarish ----------
 def list_facts(cid):
-    r = (db.table("facts").select("id,fact")
+    r = (db.table("facts").select("id,fact,expires_at")
          .eq("chat_id", cid).order("id").execute())
     return r.data
 
@@ -494,10 +529,16 @@ async def memory_cmd(update, ctx):
         await update.message.reply_text(
             "Hozircha siz haqingizda hech narsa saqlanmagan.")
         return
-    text = "\n".join(f'{i}. {x["fact"]}'
-                     for i, x in enumerate(rows, 1))
+    lines = []
+    for i, x in enumerate(rows, 1):
+        tail = ""
+        if x.get("expires_at"):
+            d = datetime.fromisoformat(
+                x["expires_at"].replace("Z", "+00:00"))
+            tail = f" (gacha: {d.astimezone(TZ).strftime('%d.%m')})"
+        lines.append(f'{i}. {x["fact"]}{tail}')
     await update.message.reply_text(
-        text + "\n\nO'chirish: /fakt_ochir 2, 5\n"
+        "\n".join(lines) + "\n\nO'chirish: /fakt_ochir 2, 5\n"
         "Qo'shish: /eslab_qol <matn>")
 
 async def fact_del(update, ctx):
@@ -589,6 +630,12 @@ async def proactive_loop(app):
         try:
             now = datetime.now(TZ)
             day = now.strftime("%Y-%m-%d")
+            if STATE.get("clean") != day:
+                STATE["clean"] = day
+                try:
+                    await asyncio.to_thread(cleanup_db)
+                except Exception as e:
+                    print("TOZALASH xato:", e)
             for kind, hour in SLOTS:
                 if not (hour <= now.hour < hour + 3):
                     continue
