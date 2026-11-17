@@ -73,13 +73,19 @@ BASE = (
 )
 RULES = (
     "\n\nJavobingni FAQAT JSON qilib qaytar: "
-    '{"transcript": ..., "answer": ..., "reminder": ...}. '
+    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ...}. '
     "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
     "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
     "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
     '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM"} '
     "(Toshkent vaqti bilan), aks holda null. Vaqt aniq "
-    "bo'lmasa reminder null qil va answer'da vaqtni so'ra.")
+    "bo'lmasa reminder null qil va answer'da vaqtni so'ra. "
+    "memory: FAQAT foydalanuvchi aniq so'ragandagina "
+    "(masalan 'buni eslab qol', 'buni unut', 'bu noto'g'ri'): "
+    '{"remember": ["qisqa fakt"], "forget": [raqam]}, '
+    "forget uchun yuqoridagi raqamlangan faktlardan raqam "
+    "ber. Foydalanuvchi so'ramasa memory null bo'lsin. "
+    "Hech qachon o'zboshimchalik bilan unutma.")
 
 # ---------- ping server (Render uxlab qolmasligi uchun) ----------
 class Ping(BaseHTTPRequestHandler):
@@ -201,7 +207,7 @@ async def tts(text):
 
 # ---------- uzoq xotira ----------
 async def update_facts(cid):
-    hist = await asyncio.to_thread(get_history, cid, 30)
+    hist = await asyncio.to_thread(get_recent, cid, 30)
     rows = (await asyncio.to_thread(list_facts, cid))[-80:]
     old = "\n".join(f'{i}. {x["fact"]}'
                     for i, x in enumerate(rows, 1)) or "(hali yo'q)"
@@ -310,7 +316,10 @@ async def handle(update, ctx):
     await asyncio.to_thread(ensure_settings, cid)
     try:
         history = await asyncio.to_thread(get_history, cid)
-        facts = await asyncio.to_thread(get_facts, cid)
+        frows = (await asyncio.to_thread(
+            list_facts, cid))[-60:]
+        facts = [f'{i}. {x["fact"]}'
+                 for i, x in enumerate(frows, 1)]
         now = datetime.now(TZ)
         system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
                   + now.strftime("%A, %Y-%m-%d %H:%M"))
@@ -364,8 +373,9 @@ async def handle(update, ctx):
             else:
                 user_text = j.get("transcript") or fallback
             rem = j.get("reminder")
+            mem = j.get("memory")
         except Exception:
-            answer, rem = r.text, None
+            answer, rem, mem = r.text, None, None
             user_text = fallback
 
         extra = ""
@@ -388,6 +398,26 @@ async def handle(update, ctx):
                 print("ESLATMA xato:", e)
                 extra = ("\n\n⚠️ Vaqtni tushunmadim, "
                          "eslatma qo'yilmadi.")
+
+        if isinstance(mem, dict):
+            try:
+                saved = forgot = 0
+                for f in (mem.get("remember") or [])[:2]:
+                    if isinstance(f, str) and f.strip():
+                        await asyncio.to_thread(
+                            save_fact, cid, f.strip()[:200])
+                        saved += 1
+                for n in (mem.get("forget") or [])[:3]:
+                    if isinstance(n, int) and 1 <= n <= len(frows):
+                        await asyncio.to_thread(
+                            del_fact, cid, frows[n - 1]["id"])
+                        forgot += 1
+                if saved:
+                    extra += "\n\n🧠 Eslab qoldim."
+                if forgot:
+                    extra += "\n\n🗑 Xotiradan olib tashladim."
+            except Exception as e:
+                print("XOTIRA xato:", e)
 
         await msg.reply_text(answer + extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
@@ -500,6 +530,23 @@ async def fact_add(update, ctx):
         save_fact, update.message.chat_id, text[:300])
     await update.message.reply_text("Eslab qoldim.")
 
+async def summary_cmd(update, ctx):
+    s_ = await asyncio.to_thread(
+        get_summary, update.message.chat_id)
+    await update.message.reply_text(
+        s_ or "Xulosa hali yo'q (30 xabardan keyin paydo bo'ladi).")
+
+async def refresh_cmd(update, ctx):
+    cid = update.message.chat_id
+    try:
+        await update_facts(cid)
+        await update.message.reply_text(
+            "Xotira yangilandi. Ko'rish: /xotira")
+    except Exception as e:
+        print("YANGILA xato:", e)
+        await update.message.reply_text(
+            "Hozir yangilab bo'lmadi, keyinroq urinib ko'ring.")
+
 # ---------- o'zi birinchi yozishi ----------
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
@@ -596,6 +643,10 @@ app.add_handler(CommandHandler(
     "fakt_ochir", fact_del, filters=ACCESS))
 app.add_handler(CommandHandler(
     "eslab_qol", fact_add, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "xulosa", summary_cmd, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "yangila", refresh_cmd, filters=ACCESS))
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
