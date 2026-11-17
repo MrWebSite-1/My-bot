@@ -5,8 +5,9 @@ from google import genai
 from google.genai import types
 from supabase import create_client
 import edge_tts
-from telegram.ext import (ApplicationBuilder,
-    MessageHandler, CommandHandler, filters)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (ApplicationBuilder, MessageHandler,
+    CommandHandler, CallbackQueryHandler, filters)
 
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 db = create_client(os.environ["SUPABASE_URL"],
@@ -18,6 +19,8 @@ HISTORY = 16
 EXTRACT_EVERY = 10
 SUMMARY_EVERY = 30
 KEEP_DAYS = 30
+REPEATS = {"daily": "har kuni", "weekly": "har hafta",
+           "weekdays": "ish kunlari"}
 STATE = {}
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
@@ -79,7 +82,11 @@ RULES = (
     "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
     "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
     "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
-    '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM"} '
+    '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM", "repeat": null} '
+    "repeat: takrorlansa 'daily' (har kuni), 'weekly' (har hafta), "
+    "'weekdays' (dushanba-juma), bir martalik bo'lsa null; "
+    "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
+
     "(Toshkent vaqti bilan), aks holda null. Vaqt aniq "
     "bo'lmasa reminder null qil va answer'da vaqtni so'ra. "
     "memory: FAQAT foydalanuvchi aniq so'ragandagina "
@@ -138,23 +145,46 @@ def wipe(cid):
     (db.table("settings").update({"summary": None})
      .eq("chat_id", cid).execute())
 
-def save_reminder(cid, task, when_utc):
-    db.table("reminders").insert(
-        {"chat_id": cid, "task": task,
-         "remind_at": when_utc}).execute()
+def save_reminder(cid, task, when_utc, repeat=None):
+    row = {"chat_id": cid, "task": task, "remind_at": when_utc}
+    if repeat:
+        row["repeat"] = repeat
+    db.table("reminders").insert(row).execute()
 
 def due_reminders():
     now = datetime.now(timezone.utc).strftime(UTC_FMT)
-    r = (db.table("reminders").select("id,chat_id,task")
+    r = (db.table("reminders")
+         .select("id,chat_id,task,remind_at,repeat")
          .eq("done", False).lte("remind_at", now).execute())
     return r.data
+
+def get_reminder(rid):
+    r = (db.table("reminders").select("chat_id,task")
+         .eq("id", rid).execute())
+    return r.data[0] if r.data else None
+
+def next_time(t, repeat):
+    now = datetime.now(timezone.utc)
+    while t <= now:
+        t += timedelta(days=7 if repeat == "weekly" else 1)
+        if repeat == "weekdays":
+            while t.astimezone(TZ).weekday() >= 5:
+                t += timedelta(days=1)
+    return t
+
+def advance(rid, remind_at, repeat):
+    t = datetime.fromisoformat(remind_at.replace("Z", "+00:00"))
+    nt = next_time(t, repeat)
+    (db.table("reminders")
+     .update({"remind_at": nt.strftime(UTC_FMT)})
+     .eq("id", rid).execute())
 
 def mark_done(rid):
     db.table("reminders").update(
         {"done": True}).eq("id", rid).execute()
 
 def pending(cid):
-    r = (db.table("reminders").select("id,task,remind_at")
+    r = (db.table("reminders").select("id,task,remind_at,repeat")
          .eq("chat_id", cid).eq("done", False)
          .order("remind_at").execute())
     return r.data
@@ -420,11 +450,15 @@ async def handle(update, ctx):
                              "eslatma qo'yilmadi.")
                 else:
                     utc = local.astimezone(timezone.utc)
+                    rp = rem.get("repeat")
+                    if rp not in REPEATS:
+                        rp = None
                     await asyncio.to_thread(
                         save_reminder, cid, rem["task"],
-                        utc.strftime(UTC_FMT))
+                        utc.strftime(UTC_FMT), rp)
+                    tag = f" 🔁 {REPEATS[rp]}" if rp else ""
                     extra = (f"\n\n✅ Eslatma qo'yildi: {rem['task']}"
-                             f" ({local.strftime('%d.%m %H:%M')})")
+                             f" ({local.strftime('%d.%m %H:%M')}){tag}")
             except Exception as e:
                 print("ESLATMA xato:", e)
                 extra = ("\n\n⚠️ Vaqtni tushunmadim, "
@@ -482,8 +516,10 @@ async def list_rem(update, ctx):
     for x in rows:
         t = datetime.fromisoformat(
             x["remind_at"].replace("Z", "+00:00")).astimezone(TZ)
+        tag = (f' 🔁 {REPEATS[x["repeat"]]}'
+               if x.get("repeat") in REPEATS else "")
         lines.append(f'{x["id"]}. {x["task"]} — '
-                     f'{t.strftime("%d.%m %H:%M")}')
+                     f'{t.strftime("%d.%m %H:%M")}{tag}')
     await update.message.reply_text(
         "\n".join(lines) + "\n\nBekor qilish: /bekor <raqam>")
 
@@ -706,15 +742,59 @@ async def reminder_loop(app):
         try:
             rows = await asyncio.to_thread(due_reminders)
             for x in rows:
+                kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "⏰ 10 daq", callback_data=f"snz:{x['id']}:10"),
+                    InlineKeyboardButton(
+                        "⏰ 1 soat", callback_data=f"snz:{x['id']}:60")],
+                    [InlineKeyboardButton(
+                        "✅ Bajarildi", callback_data=f"ok:{x['id']}")]])
                 try:
                     await app.bot.send_message(
-                        x["chat_id"], "⏰ Eslatma: " + x["task"])
+                        x["chat_id"], "⏰ Eslatma: " + x["task"],
+                        reply_markup=kb)
                 except Exception as e:
                     print("Yuborish xato:", e)
-                await asyncio.to_thread(mark_done, x["id"])
+                if x.get("repeat") in REPEATS:
+                    await asyncio.to_thread(
+                        advance, x["id"], x["remind_at"], x["repeat"])
+                else:
+                    await asyncio.to_thread(mark_done, x["id"])
         except Exception as e:
             print("SIKL xato:", e)
         await asyncio.sleep(30)
+
+async def on_button(update, ctx):
+    q = update.callback_query
+    if ALLOWED and q.from_user.id not in ALLOWED:
+        await q.answer()
+        return
+    parts = (q.data or "").split(":")
+    try:
+        if parts[0] == "ok":
+            await q.answer("Zo'r!")
+            await q.edit_message_reply_markup(reply_markup=None)
+        elif parts[0] == "snz":
+            rid, mins = int(parts[1]), int(parts[2])
+            row = await asyncio.to_thread(get_reminder, rid)
+            if not row or row["chat_id"] != q.message.chat_id:
+                await q.answer("Topilmadi")
+                return
+            when = (datetime.now(timezone.utc)
+                    + timedelta(minutes=mins))
+            await asyncio.to_thread(
+                save_reminder, row["chat_id"], row["task"],
+                when.strftime(UTC_FMT))
+            await q.answer("Keyinroq eslataman")
+            await q.edit_message_reply_markup(reply_markup=None)
+            await q.message.reply_text(
+                "Yaxshi, " + ("1 soatdan" if mins >= 60
+                              else f"{mins} daqiqadan")
+                + " keyin yana eslataman.")
+        else:
+            await q.answer()
+    except Exception as e:
+        print("TUGMA xato:", e)
 
 async def start_loop(app):
     app.bot_data["t1"] = asyncio.create_task(reminder_loop(app))
@@ -724,6 +804,7 @@ threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
        .post_init(start_loop).build())
 app.add_handler(CommandHandler("id", my_id))
+app.add_handler(CallbackQueryHandler(on_button))
 app.add_handler(CommandHandler("unut", forget, filters=ACCESS))
 app.add_handler(CommandHandler(
     "eslatmalar", list_rem, filters=ACCESS))
