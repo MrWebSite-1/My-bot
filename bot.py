@@ -601,9 +601,50 @@ SLOT_PROMPTS = {
                  "bajarilgan ishlarni qayta eslatma.",
 }
 
+def event_context(rows, kind):
+    today = datetime.now(TZ).date()
+    tod, tom = [], []
+    for x in rows:
+        u = x.get("expires_at")
+        if not u:
+            continue
+        try:
+            d = (datetime.fromisoformat(u.replace("Z", "+00:00"))
+                 .date() - timedelta(days=1))
+        except Exception:
+            continue
+        if d == today:
+            tod.append(x["fact"])
+        elif d == today + timedelta(days=1):
+            tom.append(x["fact"])
+    parts = []
+    if kind == "ertalab" and tod:
+        parts.append("Bugun bo'ladigan voqealar: "
+                     + "; ".join(tod)
+                     + ". Omad tila yoki tayyorgarlikni so'ra.")
+    if kind == "kechqurun":
+        if tod:
+            parts.append("Bugun bo'lgan voqealar: "
+                         + "; ".join(tod)
+                         + ". Qanday o'tganini so'ra.")
+        if tom:
+            parts.append("Ertaga bo'ladigan voqealar: "
+                         + "; ".join(tom)
+                         + ". Tayyorgarlik haqida iliq so'ra "
+                         "yoki omad tila.")
+    return " ".join(parts)
+
 async def greet(app, cid, kind):
+    recent = await asyncio.to_thread(get_recent, cid, 2)
+    frows = await asyncio.to_thread(list_facts, cid)
+    ev = event_context(frows, kind)
+    unanswered = (len(recent) == 2 and
+                  all(m["role"] == "model" for m in recent))
+    if unanswered and not ev:
+        print("SALOM o'tkazib yuborildi: javob yo'q", cid)
+        return
     history = await asyncio.to_thread(get_history, cid)
-    facts = await asyncio.to_thread(get_facts, cid)
+    facts = [x["fact"] for x in frows[-60:]]
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M"))
     if facts:
@@ -615,7 +656,11 @@ async def greet(app, cid, kind):
                    "kontekst uchun):\n" + summ)
     hist = "\n".join(f'{h["role"]}: {h["content"]}'
                      for h in history[-8:])
-    prompt = SLOT_PROMPTS[kind] + "\n\nOxirgi suhbat:\n" + hist
+    prompt = SLOT_PROMPTS[kind]
+    if ev:
+        prompt += "\n\nMUHIM: " + ev
+    prompt += ("\n\nOldingi xabarlaringdagi gaplarni "
+               "takrorlama.\n\nOxirgi suhbat:\n" + hist)
     r = await gen(
         model=MODEL, contents=prompt,
         config=types.GenerateContentConfig(
@@ -637,7 +682,8 @@ async def proactive_loop(app):
                 except Exception as e:
                     print("TOZALASH xato:", e)
             for kind, hour in SLOTS:
-                if not (hour <= now.hour < hour + 3):
+                if (not (hour <= now.hour < hour + 3)
+                        or now.hour >= 23):
                     continue
                 key = f"{day}-{kind}"
                 rows = await asyncio.to_thread(proactive_chats)
