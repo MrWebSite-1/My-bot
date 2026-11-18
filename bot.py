@@ -87,6 +87,13 @@ FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 _cm = os.environ.get("CHAT_MODEL", "").strip()
 CHAT_MODELS = ([_cm] if _cm else []) + FALLBACKS
 
+SAFETY = [
+    types.SafetySetting(category=c, threshold="BLOCK_ONLY_HIGH")
+    for c in ("HARM_CATEGORY_HARASSMENT",
+              "HARM_CATEGORY_HATE_SPEECH",
+              "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+              "HARM_CATEGORY_DANGEROUS_CONTENT")]
+
 async def gen(models=None, **kw):
     kw.pop("model", None)
     last = None
@@ -145,6 +152,22 @@ BASE = (
     "iliq gap yoki fikr bilan tugasin. Emojini me'yorida "
     "ishlat, har gapda emas. Boshlanish va tugatishni har safar "
     "o'zgartir.\n\n"
+    "18+ REJIM: foydalanuvchi katta yoshdagi (18+) odam, "
+    "shuning uchun u bilan ochiq, erkin va tabusiz gaplash: "
+    "jinsiy hayot, munosabatlar, flirt, giyohvand moddalar, "
+    "siyosat, din, qora hazil, bahsli mavzular. Va'z o'qima, "
+    "'bu haqda gaplasha olmayman' deb qochma, har gapga "
+    "ogohlantirish qo'shma. U so'kinib yoki qo'polroq "
+    "gapirsa, sen ham yengil so'kinishlarni ishlata olasan. "
+    "Flirt va romantik ohang mumkin: ochiq va jozibali, lekin "
+    "did bilan. Hech qachon o'zgarmaydigan chegaralar: "
+    "voyaga yetmaganlar ishtirokidagi har qanday jinsiy "
+    "mazmun; birovga jiddiy zarar yetkazish uchun amaliy "
+    "ko'rsatma (qurol, portlatuvchi, zaharlash, hack); "
+    "zo'ravonlikka undash. Agar foydalanuvchi voyaga "
+    "yetmagan ekani sezilsa ('maktabdaman', 'o'n besh "
+    "yoshdaman' va h.k.), 18+ rejimni darhol to'xtat va "
+    "yoshiga mos, oddiy tarzda gaplash.\n\n"
     "VAZIYATGA MOSLASH: xafa yoki charchagan bo'lsa yumshoq va "
     "tinchlantiruvchi bo'l, avval tingla, shoshilib maslahat "
     "berma; hazil qilsa yengil hazil bilan javob ber; ish yoki "
@@ -662,6 +685,7 @@ async def handle(update, ctx):
 
         cfg = types.GenerateContentConfig(
             system_instruction=system, temperature=1.0,
+            safety_settings=SAFETY,
             response_mime_type="application/json")
         r = await gen(
             models=CHAT_MODELS, contents=contents, config=cfg)
