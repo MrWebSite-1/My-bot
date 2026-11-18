@@ -105,8 +105,11 @@ async def gen(models=None, **kw):
             except Exception as e:
                 last = e
                 s_ = str(e)
+                if "429" in s_ or "RESOURCE_EXHAUSTED" in s_:
+                    print("LIMIT, keyingi model:", model, s_[:80])
+                    break
                 if any(k in s_ for k in
-                       ("503", "UNAVAILABLE", "429", "500")):
+                       ("503", "UNAVAILABLE", "500")):
                     print("QAYTA URINISH:", model, s_[:80])
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
@@ -473,7 +476,7 @@ async def update_facts(cid):
         "Mavjud faktlar:\n" + old +
         "\n\nFoydalanuvchi xabarlari:\n" + text)
     r = await gen(
-        model=MODEL, contents=prompt,
+        models=FALLBACKS[::-1], contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json"))
     try:
@@ -518,7 +521,7 @@ async def make_summary(cid):
         "narsalarni yozma. Faqat xulosa matnini qaytar.\n\n"
         "Oldingi xulosa: " + (old or "(yo'q)") +
         "\n\nYangi suhbat:\n" + text)
-    r = await gen(model=MODEL, contents=prompt)
+    r = await gen(models=FALLBACKS[::-1], contents=prompt)
     out = (r.text or "").strip()
     if out:
         await asyncio.to_thread(set_summary, cid, out[:1500])
