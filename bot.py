@@ -57,11 +57,17 @@ GVOICES = {"Sulafat": "Sulafat (iliq)",
            "Aoede": "Aoede (yengil)"}
 GTTS_MODELS = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]
 TTS_STYLE = {
-    "muloyim": "soft, warm and caring, calm unhurried pace",
-    "quvnoq": "cheerful, lively and warm",
-    "sokin": "quiet, soothing and gentle, slow pace",
-    "hazilkash": "playful, light and affectionate",
-    "ishchan": "clear, calm and concise",
+    "muloyim": "Speak in Uzbek as a young, soft-spoken woman. "
+               "Warm and gentle, with a faint smile in the voice. "
+               "Calm, unhurried pace, natural short pauses, soft "
+               "intonation. Never robotic or like a news announcer.",
+    "quvnoq": "Speak in Uzbek as a cheerful young woman, lively "
+              "but still warm and sweet.",
+    "sokin": "Speak in Uzbek, very softly and slowly, almost "
+             "whispering, soothing like a quiet bedtime talk.",
+    "hazilkash": "Speak in Uzbek, playful and affectionate, with "
+                 "light teasing in the voice.",
+    "ishchan": "Speak in Uzbek, clear, calm and friendly.",
 }
 STATE = {}
 PIXABAY_KEY = os.environ.get("PIXABAY_API_KEY", "")
@@ -287,12 +293,19 @@ def cleanup_db():
      .lt("created_at", old).execute())
 
 # ---------- ovoz ----------
+def speech_clean(t):
+    t = EMOJI_RE.sub("", t)
+    t = re.sub(r"https?://\S+", "", t)
+    t = re.sub(r"[*_`#>]", "", t)
+    t = re.sub(r"\s*\n+\s*", ". ", t)
+    return t.strip()[:1200]
+
 async def tts(text, voice=None, rate=None):
-    clean = EMOJI_RE.sub("", text).strip()
+    clean = speech_clean(text)
     if not clean:
         raise ValueError("matn bo'sh")
     comm = edge_tts.Communicate(
-        clean, voice or VOICE, rate=rate or "+0%")
+        clean, voice or VOICE, rate=rate or "-5%", pitch="+3Hz")
     buf = bytearray()
     async for ch in comm.stream():
         if ch["type"] == "audio":
@@ -802,7 +815,7 @@ async def style_cmd(update, ctx):
 async def voice_cmd(update, ctx):
     st = await asyncio.to_thread(
         get_settings, update.message.chat_id)
-    ce = st.get("engine") or "edge"
+    ce = st.get("engine") or "gemini"
     cg = st.get("gvoice") or "Sulafat"
     cv = st.get("voice") or VOICE
     cr = st.get("rate") or "+0%"
@@ -979,7 +992,7 @@ def _encode_voice(pcm):
 async def tts_gemini(text, st):
     if sf is None:
         raise RuntimeError("soundfile o'rnatilmagan")
-    clean = EMOJI_RE.sub("", text).strip()[:1200]
+    clean = speech_clean(text)
     if not clean:
         raise ValueError("matn bo'sh")
     voice = (st or {}).get("gvoice")
@@ -998,7 +1011,7 @@ async def tts_gemini(text, st):
 
 async def speak(text, st):
     st = st or {}
-    if (st.get("engine") or "edge") == "gemini":
+    if (st.get("engine") or "gemini") == "gemini":
         try:
             return await tts_gemini(text, st)
         except Exception as e:
