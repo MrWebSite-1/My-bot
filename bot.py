@@ -1,5 +1,10 @@
-import os, re, json, random, asyncio, threading
+import os, io, re, json, base64, random, asyncio, threading
 import httpx
+try:
+    import numpy as np
+    import soundfile as sf
+except Exception:
+    np = sf = None
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from google import genai
@@ -45,6 +50,19 @@ VOICES = {"uz-UZ-MadinaNeural": "Madina (ayol)",
 RATES = {"-20%": "🐢 Sekin", "+0%": "Oddiy", "+20%": "🐇 Tez"}
 VMODES = {"auto": "Ovozga ovoz bilan", "always": "Doim ovozli",
           "off": "Ovozsiz"}
+ENGINES = {"edge": "Oddiy (Edge)", "gemini": "Insoniy (Gemini)"}
+GVOICES = {"Sulafat": "Sulafat (iliq)",
+           "Achernar": "Achernar (yumshoq)",
+           "Vindemiatrix": "Vindemiatrix (mayin)",
+           "Aoede": "Aoede (yengil)"}
+GTTS_MODELS = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts"]
+TTS_STYLE = {
+    "muloyim": "soft, warm and caring, calm unhurried pace",
+    "quvnoq": "cheerful, lively and warm",
+    "sokin": "quiet, soothing and gentle, slow pace",
+    "hazilkash": "playful, light and affectionate",
+    "ishchan": "clear, calm and concise",
+}
 STATE = {}
 PIXABAY_KEY = os.environ.get("PIXABAY_API_KEY", "")
 IMAGES_ON = True
@@ -600,8 +618,7 @@ async def handle(update, ctx):
         vmode = st.get("vmode") or "auto"
         if vmode == "always" or (vmode == "auto" and msg.voice):
             try:
-                await msg.reply_voice(await tts(
-                    answer, st.get("voice"), st.get("rate")))
+                await msg.reply_voice(await speak(answer, st))
             except Exception as e:
                 print("TTS xato:", e)
         await maybe_extract(cid)
@@ -785,23 +802,31 @@ async def style_cmd(update, ctx):
 async def voice_cmd(update, ctx):
     st = await asyncio.to_thread(
         get_settings, update.message.chat_id)
+    ce = st.get("engine") or "edge"
+    cg = st.get("gvoice") or "Sulafat"
     cv = st.get("voice") or VOICE
     cr = st.get("rate") or "+0%"
     cm = st.get("vmode") or "auto"
+    def row(items, cur, key):
+        return [InlineKeyboardButton(
+            mark(cur, k, v), callback_data=f"set:{key}:{k}")
+            for k, v in items]
+    g = list(GVOICES.items())
     rows = [
-        [InlineKeyboardButton(mark(cv, k, v),
-                              callback_data=f"set:voice:{k}")
-         for k, v in VOICES.items()],
-        [InlineKeyboardButton(mark(cr, k, v),
-                              callback_data=f"set:rate:{k}")
-         for k, v in RATES.items()],
-        [InlineKeyboardButton(mark(cm, k, v),
-                              callback_data=f"set:vmode:{k}")
-         for k, v in VMODES.items()],
+        row(ENGINES.items(), ce, "engine"),
+        row(g[:2], cg, "gvoice"),
+        row(g[2:], cg, "gvoice"),
+        row(VOICES.items(), cv, "voice"),
+        row(RATES.items(), cr, "rate"),
+        row(VMODES.items(), cm, "vmode"),
     ]
     await update.message.reply_text(
-        "Ovoz sozlamalari: ovoz turi, tezligi va qachon "
-        "ovozli javob berishim.",
+        "Ovoz sozlamalari:\n"
+        "1-qator: ovoz turi (Insoniy = Gemini)\n"
+        "2-3-qator: Gemini ovozlari\n"
+        "4-qator: oddiy (Edge) ovoz\n"
+        "5-qator: tezlik, 6-qator: qachon ovozli.\n"
+        "Solishtirish: /ovoz_test",
         reply_markup=InlineKeyboardMarkup(rows))
 
 async def sticker_pack_cmd(update, ctx):
@@ -918,6 +943,87 @@ async def send_photos(msg, query, count):
         media = [InputMediaPhoto(b, caption=cap if i == 0 else None)
                  for i, (b, _) in enumerate(got)]
         await msg.reply_media_group(media)
+
+# ---------- Gemini TTS (insoniy ovoz) ----------
+def _gemini_tts_blocking(text, voice, style):
+    last = None
+    for model in GTTS_MODELS:
+        try:
+            it = client.interactions.create(
+                model=model,
+                input=[{"type": "user_input", "content": [{
+                    "type": "text", "text": text,
+                    "annotations": [{"type": "speech_metadata",
+                                     "style": style}]}]}],
+                response_format={"type": "audio",
+                                 "mime_type": "audio/l16",
+                                 "sample_rate": 24000},
+                generation_config={
+                    "speech_config": [{"voice": voice}]})
+            return base64.b64decode(it.output_audio.data)
+        except Exception as e:
+            last = e
+    raise last
+
+def _encode_voice(pcm):
+    arr = np.frombuffer(pcm, dtype="<i2")
+    buf = io.BytesIO()
+    try:
+        sf.write(buf, arr, 24000, format="OGG", subtype="OPUS")
+    except Exception as e:
+        print("OPUS xato, MP3 sinab ko'riladi:", e)
+        buf = io.BytesIO()
+        sf.write(buf, arr, 24000, format="MP3")
+    return buf.getvalue()
+
+async def tts_gemini(text, st):
+    if sf is None:
+        raise RuntimeError("soundfile o'rnatilmagan")
+    clean = EMOJI_RE.sub("", text).strip()[:1200]
+    if not clean:
+        raise ValueError("matn bo'sh")
+    voice = (st or {}).get("gvoice")
+    if voice not in GVOICES:
+        voice = "Sulafat"
+    style = TTS_STYLE.get((st or {}).get("style") or "muloyim",
+                          TTS_STYLE["muloyim"])
+    rate = (st or {}).get("rate")
+    if rate == "-20%":
+        style += ", speaking slowly"
+    elif rate == "+20%":
+        style += ", speaking a little faster"
+    pcm = await asyncio.to_thread(
+        _gemini_tts_blocking, clean, voice, style)
+    return await asyncio.to_thread(_encode_voice, pcm)
+
+async def speak(text, st):
+    st = st or {}
+    if (st.get("engine") or "edge") == "gemini":
+        try:
+            return await tts_gemini(text, st)
+        except Exception as e:
+            print("GEMINI TTS xato:", e)
+    return await tts(text, st.get("voice"), st.get("rate"))
+
+async def voice_test(update, ctx):
+    cid = update.message.chat_id
+    st = await asyncio.to_thread(get_settings, cid)
+    text = (" ".join(ctx.args).strip() or
+            "Salom, kuningiz qanday o'tdi? Charchagan bo'lsangiz, "
+            "biroz dam oling, men shu yerdaman.")
+    await update.message.reply_text("1) Oddiy (Edge) ovoz:")
+    try:
+        await update.message.reply_voice(await tts(
+            text, st.get("voice"), st.get("rate")))
+    except Exception as e:
+        await update.message.reply_text(f"Edge xato: {str(e)[:150]}")
+    await update.message.reply_text("2) Insoniy (Gemini) ovoz:")
+    try:
+        await update.message.reply_voice(await tts_gemini(text, st))
+    except Exception as e:
+        print("GEMINI TTS test xato:", e)
+        await update.message.reply_text(
+            f"Gemini ovozi chiqmadi: {str(e)[:200]}")
 
 # ---------- o'zi birinchi yozishi ----------
 SLOT_PROMPTS = {
@@ -1091,7 +1197,8 @@ async def on_button(update, ctx):
         elif parts[0] == "set" and len(parts) == 3:
             key, val = parts[1], parts[2]
             table = {"style": STYLES, "voice": VOICES,
-                     "rate": RATES, "vmode": VMODES}
+                     "rate": RATES, "vmode": VMODES,
+                     "engine": ENGINES, "gvoice": GVOICES}
             if key not in table or val not in table[key]:
                 await q.answer("?")
                 return
@@ -1102,13 +1209,12 @@ async def on_button(update, ctx):
                 label = label[0]
             await q.answer("Saqlandi")
             await q.message.reply_text(f"✅ {label}")
-            if key in ("voice", "rate"):
+            if key in ("voice", "rate", "engine", "gvoice"):
                 st2 = await asyncio.to_thread(get_settings, cid)
                 try:
-                    await q.message.reply_voice(await tts(
+                    await q.message.reply_voice(await speak(
                         "Salom, men Reze. Ovozim shunday "
-                        "eshitiladi.",
-                        st2.get("voice"), st2.get("rate")))
+                        "eshitiladi.", st2))
                 except Exception as e:
                     print("NAMUNA xato:", e)
         else:
@@ -1139,6 +1245,8 @@ app.add_handler(CommandHandler(
     "eslab_qol", fact_add, filters=ACCESS))
 app.add_handler(CommandHandler("uslub", style_cmd, filters=ACCESS))
 app.add_handler(CommandHandler("ovoz", voice_cmd, filters=ACCESS))
+app.add_handler(CommandHandler(
+    "ovoz_test", voice_test, filters=ACCESS))
 app.add_handler(CommandHandler(
     "stiker_paket", sticker_pack_cmd, filters=ACCESS))
 app.add_handler(CommandHandler(
