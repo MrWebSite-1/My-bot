@@ -1,11 +1,13 @@
 import os, re, json, random, asyncio, threading
+import httpx
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from google import genai
 from google.genai import types
 from supabase import create_client
 import edge_tts
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
+    InputMediaPhoto)
 from telegram.ext import (ApplicationBuilder, MessageHandler,
     CommandHandler, CallbackQueryHandler, filters)
 
@@ -44,6 +46,7 @@ RATES = {"-20%": "🐢 Sekin", "+0%": "Oddiy", "+20%": "🐇 Tez"}
 VMODES = {"auto": "Ovozga ovoz bilan", "always": "Doim ovozli",
           "off": "Ovozsiz"}
 STATE = {}
+PEXELS_KEY = os.environ.get("PEXELS_API_KEY", "")
 SLOTS = [("ertalab", 9), ("kechqurun", 21)]
 
 ALLOWED = {int(x) for x in
@@ -102,7 +105,7 @@ BASE = (
 )
 RULES = (
     "\n\nJavobingni FAQAT JSON qilib qaytar: "
-    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ..., "sticker": ...}. '
+    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ..., "sticker": ..., "image": ...}. '
     "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
     "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
     "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
@@ -424,6 +427,16 @@ async def handle(update, ctx):
                        "kayfiyatga qarab xohlagancha ishlat), "
                        "kerak bo'lmasa null: "
                        + " ".join(list(pack)[:40]))
+        if PEXELS_KEY:
+            system += ("\n\nRasm yuborish: foydalanuvchi biror "
+                       "narsaning haqiqiy rasmini ko'rsatishni "
+                       "so'rasa, image maydoniga "
+                       '{"query": "ingliz tilida 2-4 so\'zli '
+                       'qidiruv", "count": 1} yoz (count 1 dan 4 '
+                       "gacha). answer'da rasm yuborayotganingni "
+                       "qisqa ayt. Faqat tayyor suratlar yuboriladi, "
+                       "o'zing rasm chiza olmaysan. So'ralmasa "
+                       "image null bo'lsin.")
         if facts:
             system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                        + "\n- ".join(facts))
@@ -456,6 +469,28 @@ async def handle(update, ctx):
             emo = msg.sticker.emoji or ""
             parts = [types.Part(
                 text=f"[Foydalanuvchi stiker yubordi: {emo}]")]
+            try:
+                sk = msg.sticker
+                tf = sk.thumbnail if sk.is_animated else None
+                if sk.is_animated and not tf:
+                    raise ValueError("thumbnail yo'q")
+                fobj = await (tf or sk).get_file()
+                raw = bytes(await fobj.download_as_bytearray())
+                ext = (fobj.file_path or "").lower().rsplit(".", 1)[-1]
+                mime = {"webp": "image/webp", "jpg": "image/jpeg",
+                        "jpeg": "image/jpeg", "png": "image/png",
+                        "webm": "video/webm"}.get(ext)
+                if mime and len(raw) < 4000000:
+                    parts = [
+                        types.Part.from_bytes(
+                            data=raw, mime_type=mime),
+                        types.Part(text=(
+                            f"(Foydalanuvchi stiker yubordi, "
+                            f"emojisi: {emo}. Stikerning o'zini "
+                            "ko'rib, mazmuniga mos, jonli javob "
+                            "ber.)"))]
+            except Exception as e:
+                print("STIKER ko'rish xato:", e)
             if (msg.sticker.set_name and not st.get("sticker_set")
                     and st.get("stickers") is not False):
                 await asyncio.to_thread(
@@ -489,8 +524,10 @@ async def handle(update, ctx):
             rem = j.get("reminder")
             mem = j.get("memory")
             stk = j.get("sticker")
+            img = j.get("image")
         except Exception:
-            answer, rem, mem, stk = r.text, None, None, None
+            answer, rem, mem, stk, img = (
+                r.text, None, None, None, None)
             user_text = fallback
 
         extra = ""
@@ -545,6 +582,14 @@ async def handle(update, ctx):
         await msg.reply_text(answer + extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
+        if isinstance(img, dict) and img.get("query"):
+            try:
+                c_ = img.get("count")
+                c_ = c_ if isinstance(c_, int) else 1
+                await send_photos(
+                    msg, str(img["query"])[:80], max(1, min(c_, 4)))
+            except Exception as e:
+                print("RASM xato:", e)
         if isinstance(stk, str) and pack.get(stk.strip()):
             try:
                 await msg.reply_sticker(
@@ -791,6 +836,40 @@ async def sticker_on(update, ctx):
     await asyncio.to_thread(
         update_setting, update.message.chat_id, "stickers", True)
     await update.message.reply_text("Stikerlar yoqildi 🎴")
+
+# ---------- tayyor rasm (Pexels) ----------
+async def find_photos(query, n):
+    if not PEXELS_KEY:
+        return None
+    async with httpx.AsyncClient(timeout=15) as c:
+        r = await c.get(
+            "https://api.pexels.com/v1/search",
+            params={"query": query, "per_page": 15},
+            headers={"Authorization": PEXELS_KEY})
+    r.raise_for_status()
+    items = r.json().get("photos", [])
+    random.shuffle(items)
+    return items[:n]
+
+async def send_photos(msg, query, count):
+    photos = await find_photos(query, count)
+    if photos is None:
+        await msg.reply_text(
+            "Rasm qidirish hali sozlanmagan (PEXELS_API_KEY kerak).")
+        return
+    if not photos:
+        await msg.reply_text("Bu haqda mos rasm topa olmadim 😔")
+        return
+    names = ", ".join(dict.fromkeys(
+        p.get("photographer") or "?" for p in photos))
+    cap = f"📷 Foto: {names} · Pexels"
+    urls = [p["src"]["large"] for p in photos]
+    if len(urls) == 1:
+        await msg.reply_photo(urls[0], caption=cap)
+    else:
+        media = [InputMediaPhoto(u, caption=cap if i == 0 else None)
+                 for i, u in enumerate(urls)]
+        await msg.reply_media_group(media)
 
 # ---------- o'zi birinchi yozishi ----------
 SLOT_PROMPTS = {
