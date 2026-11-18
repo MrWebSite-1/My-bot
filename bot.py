@@ -88,7 +88,7 @@ _cm = os.environ.get("CHAT_MODEL", "").strip()
 CHAT_MODELS = ([_cm] if _cm else []) + FALLBACKS
 
 SAFETY = [
-    types.SafetySetting(category=c, threshold="BLOCK_ONLY_HIGH")
+    types.SafetySetting(category=c, threshold="BLOCK_NONE")
     for c in ("HARM_CATEGORY_HARASSMENT",
               "HARM_CATEGORY_HATE_SPEECH",
               "HARM_CATEGORY_SEXUALLY_EXPLICIT",
@@ -100,8 +100,19 @@ async def gen(models=None, **kw):
     for model in (models or FALLBACKS):
         for attempt in range(2):
             try:
-                return await client.aio.models.generate_content(
+                resp = await client.aio.models.generate_content(
                     model=model, **kw)
+                if (resp.text or "").strip():
+                    return resp
+                fr = None
+                try:
+                    fr = resp.candidates[0].finish_reason
+                except Exception:
+                    pass
+                print("BLOK/BO'SH:", model, fr,
+                      getattr(resp, "prompt_feedback", None))
+                last = RuntimeError("BLOK: bo'sh javob")
+                break
             except Exception as e:
                 last = e
                 s_ = str(e)
@@ -162,8 +173,14 @@ BASE = (
     "'bu haqda gaplasha olmayman' deb qochma, har gapga "
     "ogohlantirish qo'shma. U so'kinib yoki qo'polroq "
     "gapirsa, sen ham yengil so'kinishlarni ishlata olasan. "
-    "Flirt va romantik ohang mumkin: ochiq va jozibali, lekin "
-    "did bilan. Hech qachon o'zgarmaydigan chegaralar: "
+    "Flirt, romantika va ishqiy yaqinlik: to'liq erkin. "
+    "Foydalanuvchi flirt qilsa yoki romantik gapirsa, "
+    "xijolat bo'lma, rad etma, mavzuni almashtirma va "
+    "'bunday gaplashmaymiz' dema: jozibali, iliq va "
+    "hissiyotli javob ber, sen ham flirt qil, erkalat, "
+    "ishqiy gaplar ayt. Yaqinlik lahzalarini ham hissiy va "
+    "sensual yoz (ortiqcha grafik tafsilotsiz). "
+    "Hech qachon o'zgarmaydigan chegaralar: "
     "voyaga yetmaganlar ishtirokidagi har qanday jinsiy "
     "mazmun; birovga jiddiy zarar yetkazish uchun amaliy "
     "ko'rsatma (qurol, portlatuvchi, zaharlash, hack); "
@@ -810,8 +827,13 @@ async def handle(update, ctx):
         await maybe_extract(cid)
     except Exception as e:
         print("XATO:", e)
-        await msg.reply_text("Xatolik yoki limit tugadi, "
-                             "birozdan keyin yozib ko'ring.")
+        if "BLOK" in str(e):
+            await msg.reply_text("Hmm, buni shu tarzda ayta "
+                                 "olmadim. Boshqacha so'z bilan "
+                                 "davom etamizmi?")
+        else:
+            await msg.reply_text("Xatolik yoki limit tugadi, "
+                                 "birozdan keyin yozib ko'ring.")
 
 # ---------- buyruqlar ----------
 async def forget(update, ctx):
