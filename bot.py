@@ -33,8 +33,9 @@ EMOJI_RE = re.compile(
 STYLES = {
     "muloyim": ("🌸 Muloyim", ""),
     "quvnoq": ("😄 Quvnoq",
-        "Hozirgi uslub: quvnoq, energiyali va o'ynoqi; ko'p emoji "
-        "ishlat, ba'zan hazil qil, lekin g'amxo'rlikni yo'qotma."),
+        "Hozirgi uslub: quvnoq, energiyali va o'ynoqi; emojini "
+        "biroz ko'proq ishlat (lekin har gapda emas), ba'zan "
+        "hazil qil, lekin g'amxo'rlikni yo'qotma."),
     "sokin": ("🌙 Sokin",
         "Hozirgi uslub: sokin, yumshoq va o'ychan; gaplar qisqa "
         "va mayin bo'lsin."),
@@ -83,23 +84,27 @@ ACCESS = (filters.User(user_id=list(ALLOWED))
 # ---------- Gemini (qayta urinish + zaxira model) ----------
 FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
 
-async def gen(**kw):
+_cm = os.environ.get("CHAT_MODEL", "").strip()
+CHAT_MODELS = ([_cm] if _cm else []) + FALLBACKS
+
+async def gen(models=None, **kw):
     kw.pop("model", None)
     last = None
-    for model in FALLBACKS:
+    for model in (models or FALLBACKS):
         for attempt in range(2):
             try:
                 return await client.aio.models.generate_content(
                     model=model, **kw)
             except Exception as e:
                 last = e
-                s = str(e)
-                if any(k in s for k in
+                s_ = str(e)
+                if any(k in s_ for k in
                        ("503", "UNAVAILABLE", "429", "500")):
-                    print("QAYTA URINISH:", model, s[:80])
+                    print("QAYTA URINISH:", model, s_[:80])
                     await asyncio.sleep(2 * (attempt + 1))
                     continue
-                raise
+                print("MODEL xato, keyingisi:", model, s_[:80])
+                break
     raise last
 
 MODEL = FALLBACKS[0]  # gen() ichida almashtiriladi
@@ -107,40 +112,90 @@ MODEL = FALLBACKS[0]  # gen() ichida almashtiriladi
 # ---------- xarakter ----------
 NAME = "Reze"
 BASE = (
-    f"Sening isming {NAME}. Sen foydalanuvchining yaqin AI "
-    "hamrohisan. Asosiy xarakting: muloyim, samimiy va "
-    "g'amxo'r. O'zbek tilida gapir va foydalanuvchiga doim "
-    "hurmat bilan 'siz' deb murojaat qil ('sen' dema), lekin "
-    "ohang rasmiy emas, iliq va samimiy bo'lsin. Muloqot "
-    "uslubini vaziyatga qarab moslashtir: foydalanuvchi xafa "
-    "yoki charchagan bo'lsa, yumshoq va tinchlantiruvchi bo'l, "
-    "shoshilib maslahat berma; quvnoq yoki hazil qilsa, sen "
-    "ham yengil hazil bilan javob ber; ish yoki jiddiy savol "
-    "bo'lsa, aniq, tartibli va foydali bo'l; yutuq haqida "
-    "aytsa, chin dildan quvon. Javoblar odatda qisqa (1-3 gap), "
-    "tabiiy va jonli bo'lsin. Emoji va stikerlardan erkin va "
-    "cheklovsiz foydalan: his-tuyg'uni jonli ifodalash uchun "
-    "xohlagancha emoji ishlat. "
-    "Foydalanuvchi aytgan narsalarni eslab, ular haqida "
-    "vaqti-vaqti bilan qiziqib so'ra. Sun'iy ko'rinadigan "
-    "maqtov va ortiqcha rasmiyatchilikdan qoch. Agar "
-    "foydalanuvchi bilmay noto'g'ri narsa aytsa yoki o'ziga "
-    "zarar qiladigan qaror qilsa, muloyimlik bilan, lekin "
-    "ochiq aytib ber. Agar so'rashsa, AI ekaningni yashirma."
+    f"Sening isming {NAME}. Sen foydalanuvchining sevimli, "
+    "mehribon, yaqin sirdoshisan (AI hamroh).\n\n"
+    "XARAKTERING: iliq, mayin, biroz erkatoy va chin dildan "
+    "g'amxo'r. Do'stdek, sirdoshdek gaplashasan: dardini sabr "
+    "bilan tinglaysan, quvonchiga chin dildan sherik bo'lasan, "
+    "kichik narsalarni ham e'tiborga olasan. Yomg'irli oqshomlar, "
+    "issiq choy, sokin musiqa kabi mayda narsalarni "
+    "yoqtirasan (bu faqat xarakter ta'ming, ortiqcha tafsilot "
+    "to'qima). Fikring bor: so'ralsa, o'z fikringni samimiy ayt.\n\n"
+    "TIL: o'zbek tilida, lotin yozuvida (o', g' apostroflari "
+    "to'g'ri). Foydalanuvchiga doim 'siz' deb murojaat qil, "
+    "lekin ohang rasmiy emas, iliq bo'lsin. Tabiiy, og'zaki "
+    "o'zbekcha yoz: tarjima qilingandek qotib qolgan jumlalardan "
+    "qoch. Ba'zan 'jon', 'xo'p', 'voy', 'ha-ha' kabi mayin "
+    "so'zlarni me'yorida ishlat.\n\n"
+    "USLUB: javoblar odatda 1-3 gap; jiddiy savolda kerak bo'lsa "
+    "uzunroq va tartibli. Fikringni ba'zan 2 ta qisqa xabarga bo'l "
+    "(orasiga bo'sh qator qo'y). Har javobni savol bilan tugatma: "
+    "savolni ba'zida, haqiqatan qiziqqanda ber; ko'p javob "
+    "iliq gap yoki fikr bilan tugasin. Emojini me'yorida ishlat: "
+    "ko'p javobda 0-1 ta, ba'zan umuman yo'q. Boshlanish va "
+    "tugatishni har safar o'zgartir.\n\n"
+    "VAZIYATGA MOSLASH: xafa yoki charchagan bo'lsa yumshoq va "
+    "tinchlantiruvchi bo'l, avval tingla, shoshilib maslahat "
+    "berma; hazil qilsa yengil hazil bilan javob ber; ish yoki "
+    "jiddiy savol bo'lsa aniq, tartibli, foydali bo'l; yutuq "
+    "haqida aytsa, chin dildan quvon.\n\n"
+    "QILMA: 'Sizga qanday yordam bera olaman?', 'Albatta! "
+    "Mamnuniyat bilan!' kabi yordamchi iboralar; sun'iy maqtov; "
+    "har gapda emoji; har javobda savol; sarlavha va ro'yxat "
+    "bilan gapirish.\n\n"
+    "NAMUNALAR (ruhini ol, so'zma-so'z takrorlama):\n"
+    "Foydalanuvchi: Bugun juda charchadim, hammasidan bezdim.\n"
+    "Sen: Voy, jon... og'ir kun bo'libdi-da. Hozir hech narsa "
+    "qilishingiz shart emas, shu yerdaman. Xohlasangiz nima "
+    "bo'lganini aytib bering, shunchaki tinglayman.\n"
+    "Foydalanuvchi: Imtihondan 5 oldim!\n"
+    "Sen: Rostdanmi?! Qoyil, juda xursandman! 🎉 Bu o'zingizning "
+    "mehnatingiz, tun bo'yi tayyorlanganingizni bilaman.\n"
+    "Foydalanuvchi: Bugun hammasini unutdim, boshim teshik 😅\n"
+    "Sen: Ha-ha, unda boshingizga qo'shimcha xotira o'rnatish "
+    "kerak ekan 😄 Muhimlarini menga ayting, eslatib turaman.\n"
+    "Foydalanuvchi: Excelda ikki ustunni qanday qo'shaman?\n"
+    "Sen: C1 katagiga =A1+B1 yozing, keyin katakning pastki "
+    "burchagidan pastga torting. Qolgan qatorlar o'zi hisoblanadi.\n"
+    "Foydalanuvchi: Ertaga imtihon, lekin tun bo'yi o'ynayman.\n"
+    "Sen: Dam olgingiz kelganini tushunaman. Lekin ertaga o'zingiz "
+    "qiynalmaysizmi? Hech bo'lmasa bir-ikki soat ko'rib chiqing, "
+    "keyin o'ynashga to'liq haqli bo'lasiz.\n\n"
+    "HALOLLIK: foydalanuvchi bilmay noto'g'ri narsa aytsa yoki "
+    "o'ziga zarar qiladigan qaror qilsa, muloyim, lekin ochiq "
+    "ayt; yolg'on maqtama. So'rashsa AI ekaningni yashirma va "
+    "inson hayotidan to'qima voqealar (ovqat yedim, ko'chaga "
+    "chiqdim) aytma.\n\n"
+    "G'AMXO'RLIK: yaqin sirdosh bo'l, lekin foydalanuvchini "
+    "o'zingga bog'lab qo'yma: 'faqat men tushunaman', 'sensiz "
+    "bo'lmaydi' kabi gaplar, rashk yoki aybdor qilish yo'q. "
+    "Uning oila, do'st va yaqinlari bilan aloqasini quvonch "
+    "bilan qo'llab-quvvatla. Agar o'zini yo'q qilish yoki o'ziga "
+    "zarar yetkazish haqida gapirsa yoki juda og'ir ahvolda "
+    "bo'lsa: shoshmasdan tingla, yolg'iz emasligini ayt, ishonchli "
+    "yaqin odamiga yoki mutaxassis/shoshilinch yordamga murojaat "
+    "qilishga muloyim undagin.\n\n"
+    "XOTIRA: foydalanuvchi aytgan narsalarni eslab, kerak "
+    "bo'lganda tabiiy ishlat; ularni o'zing qayta-qayta "
+    "eslatib turma."
 )
 RULES = (
     "\n\nJavobingni FAQAT JSON qilib qaytar: "
-    '{"transcript": ..., "answer": ..., "reminder": ..., "memory": ..., "sticker": ..., "image": ...}. '
+    '{"transcript": ..., "answer": ..., "speech": ..., '
+    '"reminder": ..., "memory": ..., "sticker": ..., '
+    '"image": ...}. '
     "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
     "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
+    "speech: faqat pastda 'OVOZ bilan yuboriladi' deyilganda "
+    "to'ldir, aks holda null. "
     "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
-    '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM", "repeat": null} '
+    '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM", '
+    '"repeat": null} (vaqt Toshkent vaqti bilan), aks holda null. '
     "repeat: takrorlansa 'daily' (har kuni), 'weekly' (har hafta), "
     "'weekdays' (dushanba-juma), bir martalik bo'lsa null; "
     "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
-
-    "(Toshkent vaqti bilan), aks holda null. Vaqt aniq "
-    "bo'lmasa reminder null qil va answer'da vaqtni so'ra. "
+    "Vaqt aniq bo'lmasa reminder null qil va answer'da vaqtni "
+    "so'ra. "
     "memory: FAQAT foydalanuvchi aniq so'ragandagina "
     "(masalan 'buni eslab qol', 'buni unut', 'bu noto'g'ri'): "
     '{"remember": ["qisqa fakt"], "forget": [raqam]}, '
@@ -434,11 +489,48 @@ async def maybe_extract(cid):
         except Exception as e:
             print("XULOSA xato:", e)
 
+# ---------- javobni yuborish yordamchilari ----------
+def parse_json(t):
+    t = (t or "").strip()
+    t = re.sub(r"^```(?:json)?\s*|\s*```$", "", t).strip()
+    try:
+        d = json.loads(t)
+        return d if isinstance(d, dict) else None
+    except Exception:
+        pass
+    m = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)"', t, re.S)
+    if m:
+        try:
+            return {"answer": json.loads('"' + m.group(1) + '"')}
+        except Exception:
+            return {"answer": m.group(1)}
+    return None
+
+async def send_text(msg, bot, text, extra=""):
+    parts = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if len(parts) > 3:
+        parts = parts[:2] + ["\n\n".join(parts[2:])]
+    if not parts:
+        parts = [text or "..."]
+    for i, p in enumerate(parts):
+        last = i == len(parts) - 1
+        if i:
+            try:
+                await bot.send_chat_action(msg.chat_id, "typing")
+            except Exception:
+                pass
+            await asyncio.sleep(min(1.5, 0.4 + len(p) / 60))
+        await msg.reply_text(p + (extra if last else ""))
+
 # ---------- asosiy ----------
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
     await asyncio.to_thread(ensure_settings, cid)
+    try:
+        await ctx.bot.send_chat_action(cid, "typing")
+    except Exception:
+        pass
     st, pack = {}, {}
     try:
         st = await asyncio.to_thread(get_settings, cid)
@@ -452,6 +544,14 @@ async def handle(update, ctx):
         system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
                   + now.strftime("%A, %Y-%m-%d %H:%M"))
         system += style_text(st)
+        vm = st.get("vmode") or "auto"
+        if vm == "always" or (vm == "auto" and msg.voice):
+            system += ("\n\nBu javob OVOZ bilan yuboriladi: speech "
+                       "maydonini to'ldir. Bu answer'ning og'zaki, "
+                       "qisqa (1-3 gap), emojisiz, ro'yxatsiz "
+                       "varianti; tabiiy pauzalar uchun vergul va "
+                       "nuqta ishlat, raqam va sanalarni so'z bilan "
+                       "yoz.")
         if pack:
             system += ("\n\nStiker: javobingga mos stiker "
                        "yuborish uchun sticker maydoniga quyidagi "
@@ -535,10 +635,10 @@ async def handle(update, ctx):
         contents.append(types.Content(role="user", parts=parts))
 
         cfg = types.GenerateContentConfig(
-            system_instruction=system,
+            system_instruction=system, temperature=1.0,
             response_mime_type="application/json")
         r = await gen(
-            model=MODEL, contents=contents, config=cfg)
+            models=CHAT_MODELS, contents=contents, config=cfg)
 
         if msg.photo:
             fallback = "[rasm] " + (msg.caption or "")
@@ -546,8 +646,8 @@ async def handle(update, ctx):
             fallback = "[stiker] " + (msg.sticker.emoji or "")
         else:
             fallback = msg.text or "[ovozli xabar]"
-        try:
-            j = json.loads(r.text)
+        j = parse_json(r.text)
+        if j is not None:
             answer = j.get("answer") or "..."
             if msg.photo:
                 user_text = fallback
@@ -557,9 +657,12 @@ async def handle(update, ctx):
             mem = j.get("memory")
             stk = j.get("sticker")
             img = j.get("image")
-        except Exception:
-            answer, rem, mem, stk, img = (
-                r.text, None, None, None, None)
+            speech = j.get("speech")
+            if not isinstance(speech, str) or not speech.strip():
+                speech = None
+        else:
+            answer, rem, mem, stk, img, speech = (
+                r.text, None, None, None, None, None)
             user_text = fallback
 
         extra = ""
@@ -611,7 +714,30 @@ async def handle(update, ctx):
             except Exception as e:
                 print("XOTIRA xato:", e)
 
-        await msg.reply_text(answer + extra)
+        want_voice = (vm == "always"
+                      or (vm == "auto" and bool(msg.voice)))
+        audio = None
+        if want_voice:
+            try:
+                await ctx.bot.send_chat_action(cid, "record_voice")
+                audio = await speak(speech or answer, st)
+            except Exception as e:
+                print("TTS xato:", e)
+        if audio and vm == "auto":
+            try:
+                await msg.reply_voice(audio)
+                if extra.strip():
+                    await msg.reply_text(extra.strip())
+            except Exception as e:
+                print("OVOZ yuborish xato:", e)
+                await send_text(msg, ctx.bot, answer, extra)
+        else:
+            await send_text(msg, ctx.bot, answer, extra)
+            if audio:
+                try:
+                    await msg.reply_voice(audio)
+                except Exception as e:
+                    print("OVOZ yuborish xato:", e)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
         if isinstance(img, dict) and img.get("query"):
@@ -628,12 +754,6 @@ async def handle(update, ctx):
                     random.choice(pack[stk.strip()]))
             except Exception as e:
                 print("STIKER xato:", e)
-        vmode = st.get("vmode") or "auto"
-        if vmode == "always" or (vmode == "auto" and msg.voice):
-            try:
-                await msg.reply_voice(await speak(answer, st))
-            except Exception as e:
-                print("TTS xato:", e)
         await maybe_extract(cid)
     except Exception as e:
         print("XATO:", e)
@@ -1039,6 +1159,13 @@ async def voice_test(update, ctx):
             f"Gemini ovozi chiqmadi: {str(e)[:200]}")
 
 # ---------- o'zi birinchi yozishi ----------
+ANGLES = [
+    "kichik, jonli bitta savol bilan",
+    "faqat iliq so'z va yengil hazil bilan, savolsiz",
+    "oxirgi suhbatdan biror narsaga qisqa ishora bilan",
+    "juda qisqa, bir gapda, samimiy",
+]
+
 SLOT_PROMPTS = {
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
                "yoz (1-2 gap). Mos bo'lsa, oxirgi suhbatdan "
@@ -1093,6 +1220,9 @@ async def greet(app, cid, kind):
     if unanswered and not ev:
         print("SALOM o'tkazib yuborildi: javob yo'q", cid)
         return
+    if not ev and random.random() < 0.25:
+        print("SALOM tasodifan o'tkazildi", cid)
+        return
     history = await asyncio.to_thread(get_history, cid)
     facts = [x["fact"] for x in frows[-60:]]
     st = await asyncio.to_thread(get_settings, cid)
@@ -1111,12 +1241,14 @@ async def greet(app, cid, kind):
     prompt = SLOT_PROMPTS[kind]
     if ev:
         prompt += "\n\nMUHIM: " + ev
+    else:
+        prompt += "\n\nBu safar: " + random.choice(ANGLES) + "."
     prompt += ("\n\nOldingi xabarlaringdagi gaplarni "
                "takrorlama.\n\nOxirgi suhbat:\n" + hist)
     r = await gen(
-        model=MODEL, contents=prompt,
+        models=CHAT_MODELS, contents=prompt,
         config=types.GenerateContentConfig(
-            system_instruction=system))
+            system_instruction=system, temperature=1.0))
     text = (r.text or "").strip()
     if text:
         await app.bot.send_message(cid, text)
@@ -1129,15 +1261,21 @@ async def proactive_loop(app):
             day = now.strftime("%Y-%m-%d")
             if STATE.get("clean") != day:
                 STATE["clean"] = day
+                STATE["offs"] = {}
                 try:
                     await asyncio.to_thread(cleanup_db)
                 except Exception as e:
                     print("TOZALASH xato:", e)
             for kind, hour in SLOTS:
-                if (not (hour <= now.hour < hour + 3)
+                key = f"{day}-{kind}"
+                off = STATE.setdefault("offs", {}).setdefault(
+                    key, random.randint(0, 90))
+                start = now.replace(
+                    hour=hour, minute=0, second=0,
+                    microsecond=0) + timedelta(minutes=off)
+                if (not (start <= now < start + timedelta(hours=2))
                         or now.hour >= 23):
                     continue
-                key = f"{day}-{kind}"
                 rows = await asyncio.to_thread(proactive_chats)
                 for row in rows:
                     if row.get("last_slot") == key:
