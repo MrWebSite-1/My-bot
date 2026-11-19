@@ -12,7 +12,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
-from utils import style_text
+from utils import style_text, mood_text
 
 def event_context(rows, kind):
     today = datetime.now(TZ).date()
@@ -65,6 +65,7 @@ async def greet(app, cid, kind):
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M"))
     system += style_text(st)
+    system += mood_text(cid)
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))

@@ -93,7 +93,7 @@ RULES = (
     "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
     "Vaqt aniq bo'lmasa reminder null qil va answer'da vaqtni "
     "so'ra. "
-    "memory: foydalanuvchi o'zi aytgan doimiy faktlarni (ism, yaqinlari, ish yoki o'qish, sevimli narsalari, muhim rejalari va sanalari) so'ramasa ham saqla: {\"remember\": [\"qisqa fakt\"], \"forget\": [raqam]}. Kayfiyat, bir martalik savol va eslatmalarni saqlama. Ro'yxatda bor faktni qayta yozma. Foydalanuvchi 'unut' yoki 'bu noto'g'ri' desa, forget dan foydalan. Aks holda null. "
+    "memory: foydalanuvchi o'zi aytgan doimiy faktlarni (ism, yaqinlari, ish yoki o'qish, sevimli narsalari, muhim rejalari va sanalari) so'ramasa ham saqla (ichki hazil va laqablarni ham): {\"remember\": [\"qisqa fakt\"], \"forget\": [raqam]}. Kayfiyat, bir martalik savol va eslatmalarni saqlama. Ro'yxatda bor faktni qayta yozma. Foydalanuvchi 'unut' yoki 'bu noto'g'ri' desa, forget dan foydalan. Aks holda null. "
     "Hech qachon o'zboshimchalik bilan unutma.")
 
 ANGLES = [
@@ -116,3 +116,14 @@ SLOT_PROMPTS = {
                  "Oldingi suhbatdagi eski eslatma yoki "
                  "bajarilgan ishlarni qayta eslatma.",
 }
+
+
+MOODS = [
+    "quvnoq va energiyali, hazil qilishga moyil",
+    "sokin va o'ychan, gaplari qisqaroq",
+    "biroz charchagan, lekin iliq",
+    "sho'x va o'ynoqi, erkalatishga moyil",
+    "fikrga berilgan, chuqurroq savollar bilan",
+    "biroz bezovta, lekin yaxshi niyatda",
+    "mehribon va g'amxo'r, ko'proq tinglaydi",
+]

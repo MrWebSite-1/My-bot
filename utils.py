@@ -1,7 +1,9 @@
 """YORDAMCHILAR: JSON o'qish, matnni bo'lib yuborish, uslub matni, stiker paketi.
 """
-import asyncio, json, re
-from config import STATE, STYLES
+import asyncio, json, random, re
+from datetime import datetime
+from config import STATE, STYLES, TZ
+from character import MOODS
 
 def parse_json(t):
     t = (t or "").strip()
@@ -49,3 +51,13 @@ async def get_pack(bot, st):
 
 def mark(cur, key, label):
     return ("✔ " if cur == key else "") + label
+
+
+def mood_text(cid):
+    """Har chat va har kun uchun bir xil kayfiyat (kun ichida o'zgarmaydi)."""
+    day = datetime.now(TZ).strftime("%Y-%m-%d")
+    m = random.Random(f"{cid}-{day}").choice(MOODS)
+    return ("\n\nBugungi kayfiyating: " + m + ". Buni javobingda "
+            "tabiiy seze olsin, lekin o'zingni tushuntirib o'tirma.\n"
+            "Faktlar orasida 'Ichki hazil' bo'lsa, ularni o'rinli "
+            "ishlat, hammasini birdan emas.")

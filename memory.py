@@ -37,6 +37,7 @@ async def update_facts(cid):
         "o'qish, doimiy qiziqish va hobbi, uzoq muddatli "
         "maqsad va loyihalar, doimiy odat va afzalliklar, "
         "muhim sana.\n"
+        "ICHKI HAZIL: foydalanuvchi bilan botning o'rtasidagi takrorlanadigan hazil, laqab, ichki so'z yoki birgalikdagi esdalik. Shunday yoz: 'Ichki hazil: ...'.\n"
         "MUDDATLI FAKT: aniq sanasi bor kelgusi voqea "
         "(imtihon, safar, uchrashuv, topshiriq muddati). "
         "Unga \"until\" qo'sh: voqeadan keyingi kun "

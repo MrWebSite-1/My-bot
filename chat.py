@@ -18,7 +18,7 @@ from database import (ensure_settings, get_settings, get_history,
                       del_fact, save_reminder, update_setting)
 from images import send_photos
 from memory import maybe_extract
-from utils import parse_json, send_text, style_text, get_pack
+from utils import parse_json, send_text, style_text, get_pack, mood_text
 from voice import speak
 
 
@@ -28,6 +28,7 @@ async def build_system(cid, st, pack, msg, vm, frows):
     system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
               + now.strftime("%A, %Y-%m-%d %H:%M"))
     system += style_text(st)
+    system += mood_text(cid)
     if vm == "always" or (vm == "auto" and msg.voice):
         system += ("\n\nBu javob OVOZ bilan yuboriladi: speech "
                    "maydonini to'ldir. Bu answer'ning og'zaki, "
