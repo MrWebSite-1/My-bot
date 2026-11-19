@@ -79,7 +79,12 @@ PIXABAY_KEY = os.environ.get("PIXABAY_API_KEY", "")
 
 IMAGES_ON = True
 
-SLOTS = [("ertalab", 9), ("kechqurun", 21)]
+SLOTS = [("ertalab", 9), ("tushlik", 13), ("kechqurun", 21)]
+
+# Uzoq jimlikdan keyin botning o'zi yozishi
+JIMLIK_HOURS = 8
+JIMLIK_START = 10
+JIMLIK_END = 22
 
 ALLOWED = {int(x) for x in
            os.environ.get("ALLOWED_IDS", "").split(",")

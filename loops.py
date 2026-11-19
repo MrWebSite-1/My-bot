@@ -6,8 +6,10 @@ from google.genai import types
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from ai import gen
 from character import BASE, SLOT_PROMPTS, ANGLES
-from config import TZ, SLOTS, STATE, REPEATS, CHAT_MODELS
+from config import (TZ, SLOTS, STATE, REPEATS, CHAT_MODELS,
+                    JIMLIK_HOURS, JIMLIK_START, JIMLIK_END)
 from database import (get_recent, list_facts, get_history, get_settings,
+                      last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
 from utils import style_text
@@ -120,6 +122,22 @@ async def proactive_loop(app):
                         await greet(app, row["chat_id"], kind)
                     except Exception as e:
                         print("SALOM xato:", e)
+            if JIMLIK_START <= now.hour < JIMLIK_END:
+                key = f"{day}-jimlik"
+                for row in await asyncio.to_thread(proactive_chats):
+                    cid = row["chat_id"]
+                    if row.get("last_slot") == key:
+                        continue
+                    last = await asyncio.to_thread(last_user_time, cid)
+                    if not last or now - last < timedelta(hours=JIMLIK_HOURS):
+                        continue
+                    if random.random() < 0.5:
+                        continue
+                    await asyncio.to_thread(set_slot, cid, key)
+                    try:
+                        await greet(app, cid, "jimlik")
+                    except Exception as e:
+                        print("JIMLIK xato:", e)
         except Exception as e:
             print("PROAKTIV xato:", e)
         await asyncio.sleep(300)

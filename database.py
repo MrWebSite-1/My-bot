@@ -155,3 +155,12 @@ def update_setting(cid, key, value):
     db.table("settings").upsert(
         {"chat_id": cid, key: value},
         on_conflict="chat_id").execute()
+
+def last_user_time(cid):
+    r = (db.table("messages").select("created_at")
+         .eq("chat_id", cid).eq("role", "user")
+         .order("id", desc=True).limit(1).execute())
+    if not r.data or not r.data[0].get("created_at"):
+        return None
+    return datetime.fromisoformat(
+        r.data[0]["created_at"].replace("Z", "+00:00"))
