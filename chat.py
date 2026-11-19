@@ -206,8 +206,6 @@ async def apply_memory(cid, mem, frows):
                     await asyncio.to_thread(
                         del_fact, cid, row["id"])
                     gone.append(row["fact"])
-            for t in saved:
-                extra += f"\n\n🧠 Eslab qoldim: «{t}»"
             for t in gone:
                 extra += f"\n\n🗑 Olib tashladim: «{t}»"
         except Exception as e:

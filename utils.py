@@ -20,20 +20,8 @@ def parse_json(t):
     return None
 
 async def send_text(msg, bot, text, extra=""):
-    parts = [p.strip() for p in text.split("\n\n") if p.strip()]
-    if len(parts) > 3:
-        parts = parts[:2] + ["\n\n".join(parts[2:])]
-    if not parts:
-        parts = [text or "..."]
-    for i, p in enumerate(parts):
-        last = i == len(parts) - 1
-        if i:
-            try:
-                await bot.send_chat_action(msg.chat_id, "typing")
-            except Exception:
-                pass
-            await asyncio.sleep(min(1.5, 0.4 + len(p) / 60))
-        await msg.reply_text(p + (extra if last else ""))
+    # Javob doim bitta xabar bo'lib yuboriladi
+    await msg.reply_text((text or "...").strip() + extra)
 
 def style_text(st):
     key = (st or {}).get("style") or "muloyim"
