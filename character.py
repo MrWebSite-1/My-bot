@@ -122,28 +122,30 @@ BASE = (
     "eslatib turma."
 )
 
-RULES = (
-    "\n\nJavobingni FAQAT JSON qilib qaytar: "
-    '{"transcript": ..., "answer": ..., "speech": ..., '
-    '"reminder": ..., "memory": ..., "sticker": ..., '
-    '"image": ...}. '
-    "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z "
-    "yoz, matn bo'lsa null. answer: foydalanuvchiga javobing. "
-    "speech: faqat pastda 'OVOZ bilan yuboriladi' deyilganda "
-    "to'ldir, aks holda null. "
-    "reminder: foydalanuvchi eslatma qo'yishni so'rasa "
+PLAIN = (
+    "\n\nJAVOBNI ODDIY MATN QILIB YOZ: JSON, kod bloki yoki maydon "
+    "nomlari qo'shma. Eslatma qo'yish, faktni eslab qolish, stiker "
+    "yoki rasm haqida texnik hech narsa yozma: buni alohida tizim "
+    "bajaradi. Foydalanuvchi eslatma so'rasa, tabiiy javob ber "
+    "(masalan: 'xo'p, eslataman'). Vaqt aniq bo'lmasa, vaqtni so'ra.")
+
+EXTRACT_RULES = (
+    "Sen yordamchi tahlilchisan. Foydalanuvchi xabari va botning "
+    "javobi asosida quyidagi JSON ni to'ldir. Hech qanday matn "
+    "qo'shma, FAQAT JSON qaytar:\n"
+    '{"transcript": ..., "reminder": ..., "memory": ..., '
+    '"sticker": ..., "image": ...}\n'
+    "transcript: ovozli xabar bo'lsa aytilganini so'zma-so'z yoz, "
+    "aks holda null.\n"
+    "reminder: foydalanuvchi aniq vaqt bilan eslatma so'ragandagina "
     '{"task": "nimani eslatish", "time": "YYYY-MM-DD HH:MM", '
-    '"repeat": null} (vaqt Toshkent vaqti bilan), aks holda null. '
-    "repeat: takrorlansa 'daily' (har kuni), 'weekly' (har hafta), "
-    "'weekdays' (dushanba-juma), bir martalik bo'lsa null; "
-    "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
-    "Vaqt aniq bo'lmasa reminder null qil va answer'da vaqtni "
-    "so'ra. "
-    "memory: FAQAT foydalanuvchi aniq so'ragandagina "
-    "(masalan 'buni eslab qol', 'buni unut', 'bu noto'g'ri'): "
-    '{"remember": ["qisqa fakt"], "forget": [raqam]}, '
-    "forget uchun yuqoridagi raqamlangan faktlardan raqam "
-    "ber. Foydalanuvchi so'ramasa memory null bo'lsin. "
+    '"repeat": null} (Toshkent vaqti bilan). repeat: "daily" '
+    '(har kuni), "weekly" (har hafta), "weekdays" (ish kunlari) '
+    "yoki null. Vaqt aniq bo'lmasa null.\n"
+    "memory: FAQAT foydalanuvchi aniq so'raganda (masalan 'buni "
+    "eslab qol', 'buni unut', 'bu noto'g'ri'): "
+    '{"remember": ["qisqa fakt"], "forget": [raqam]}. forget '
+    "uchun ro'yxatdagi raqamni ber. Aks holda null. "
     "Hech qachon o'zboshimchalik bilan unutma.")
 
 ANGLES = [

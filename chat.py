@@ -1,18 +1,15 @@
-"""ASOSIY SUHBAT: foydalanuvchi xabari kelganda nima bo'lishi.
-handle() bosqichlarni ketma-ket chaqiradi:
-  1) build_system   - botga beriladigan ko'rsatma (xarakter + xotira)
-  2) build_parts    - foydalanuvchi xabarini Gemini formatiga o'tkazish
-  3) parse_reply    - Gemini javobini o'qish
-  4) apply_reminder - eslatma qo'yish
-  5) apply_memory   - faktni eslab qolish / unutish
-  6) deliver        - javobni yuborish (matn yoki ovoz)
+"""ASOSIY SUHBAT, ikki bosqichda:
+  1) javob   - erkin matn (xarakter + xotira). Ovozli xabar ham shu yerda.
+  2) yordamchi - alohida yengil chaqiruv JSON qaytaradi: transkript,
+                 eslatma, xotira, stiker, rasm. Xato bo'lsa ham javob yuboriladi.
 """
 import asyncio, random
-from datetime import datetime, timezone
+from datetime import datetime
 from google.genai import types
 from ai import gen, SAFETY
-from character import BASE, RULES
-from config import (TZ, UTC_FMT, REPEATS, CHAT_MODELS, IMAGES_ON)
+from character import BASE, PLAIN, EXTRACT_RULES
+from config import (TZ, UTC_FMT, REPEATS, CHAT_MODELS, FALLBACKS,
+                    IMAGES_ON)
 from database import (ensure_settings, get_settings, get_history,
                       list_facts, get_summary, save_msg, save_fact,
                       del_fact, save_reminder, update_setting)
@@ -25,33 +22,14 @@ from voice import speak
 async def build_system(cid, st, pack, msg, vm, frows):
     facts = [f'{i}. {x["fact"]}' for i, x in enumerate(frows, 1)]
     now = datetime.now(TZ)
-    system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
+    system = (BASE + PLAIN + "\n\nHozirgi Toshkent vaqti: "
               + now.strftime("%A, %Y-%m-%d %H:%M"))
     system += style_text(st)
     if vm == "always" or (vm == "auto" and msg.voice):
-        system += ("\n\nBu javob OVOZ bilan yuboriladi: speech "
-                   "maydonini to'ldir. Bu answer'ning og'zaki, "
-                   "qisqa (1-3 gap), emojisiz, ro'yxatsiz "
-                   "varianti; tabiiy pauzalar uchun vergul va "
-                   "nuqta ishlat, raqam va sanalarni so'z bilan "
-                   "yoz.")
-    if pack:
-        system += ("\n\nStiker: javobingga mos stiker "
-                   "yuborish uchun sticker maydoniga quyidagi "
-                   "emojilardan BITTASINI yoz (cheklov yo'q, "
-                   "kayfiyatga qarab xohlagancha ishlat), "
-                   "kerak bo'lmasa null: "
-                   + " ".join(list(pack)[:40]))
-    if IMAGES_ON:
-        system += ("\n\nRasm yuborish: foydalanuvchi biror "
-                   "narsaning haqiqiy rasmini ko'rsatishni "
-                   "so'rasa, image maydoniga "
-                   '{"query": "ingliz tilida 2-4 so\'zli '
-                   'qidiruv", "count": 1} yoz (count 1 dan 4 '
-                   "gacha). answer'da rasm yuborayotganingni "
-                   "qisqa ayt. Faqat tayyor suratlar yuboriladi, "
-                   "o'zing rasm chiza olmaysan. So'ralmasa "
-                   "image null bo'lsin.")
+        system += ("\n\nBu javob OVOZ bilan yuboriladi: qisqa (1-3 gap), "
+                   "og'zaki, emojisiz, ro'yxatsiz yoz; tabiiy pauzalar "
+                   "uchun vergul va nuqta ishlat, raqam va sanalarni "
+                   "so'z bilan yoz.")
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))
@@ -61,6 +39,21 @@ async def build_system(cid, st, pack, msg, vm, frows):
                    "kontekst uchun, o'zing qayta eslatib "
                    "turma):\n" + summ)
     return system
+
+
+def extract_system(pack):
+    now = datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M")
+    s = EXTRACT_RULES + f"\n\nHozirgi Toshkent vaqti: {now}"
+    if pack:
+        s += ("\n\nsticker: javobingga mos bo'lsa quyidagi emojilardan "
+              "BITTASINI yoz, aks holda null: "
+              + " ".join(list(pack)[:40]))
+    if IMAGES_ON:
+        s += ('\n\nimage: foydalanuvchi biror narsaning haqiqiy rasmini '
+              'ko\'rsatishni so\'rasa {"query": "ingliz tilida 2-4 '
+              'so\'zli qidiruv", "count": 1}; count 1 dan 4 gacha. '
+              "So'ralmasa null.")
+    return s
 
 
 def history_contents(history):
@@ -127,34 +120,37 @@ async def build_parts(msg, ctx, cid, st, pack):
     return parts, pack
 
 
-def parse_reply(r, msg):
-    """Gemini javobidan: answer, reminder, memory, sticker, image,
-    speech va bazaga yoziladigan foydalanuvchi matnini ajratadi."""
+async def extract_side(parts, answer, frows, pack):
+    """2-bosqich: eslatma, xotira, stiker, rasm, transkript (JSON).
+    Xato bo'lsa bo'sh dict qaytaradi, javob baribir yuboriladi."""
+    facts = "\n".join(f'{i}. {x["fact"]}'
+                      for i, x in enumerate(frows, 1)) or "(yo'q)"
+    prompt = ("Bot javobi:\n" + answer + "\n\nMavjud faktlar:\n"
+              + facts + "\n\nYuqoridagi foydalanuvchi xabari va bot "
+              "javobi asosida JSON ni to'ldir.")
+    cfg = types.GenerateContentConfig(
+        system_instruction=extract_system(pack), temperature=0.2,
+        safety_settings=SAFETY,
+        response_mime_type="application/json")
+    try:
+        r = await gen(models=FALLBACKS, contents=[types.Content(
+            role="user", parts=parts + [types.Part(text=prompt)])],
+            config=cfg)
+        j = parse_json(r.text)
+        return j if isinstance(j, dict) else {}
+    except Exception as e:
+        print("YORDAMCHI xato:", e)
+        return {}
+
+
+def user_text_for(msg, transcript):
     if msg.photo:
-        fallback = "[rasm] " + (msg.caption or "")
-    elif msg.sticker:
-        fallback = "[stiker] " + (msg.sticker.emoji or "")
-    else:
-        fallback = msg.text or "[ovozli xabar]"
-    j = parse_json(r.text)
-    if j is not None:
-        answer = j.get("answer") or "..."
-        if msg.photo:
-            user_text = fallback
-        else:
-            user_text = j.get("transcript") or fallback
-        rem = j.get("reminder")
-        mem = j.get("memory")
-        stk = j.get("sticker")
-        img = j.get("image")
-        speech = j.get("speech")
-        if not isinstance(speech, str) or not speech.strip():
-            speech = None
-    else:
-        answer, rem, mem, stk, img, speech = (
-            r.text, None, None, None, None, None)
-        user_text = fallback
-    return answer, rem, mem, stk, img, speech, user_text
+        return "[rasm] " + (msg.caption or "")
+    if msg.sticker:
+        return "[stiker] " + (msg.sticker.emoji or "")
+    if msg.voice:
+        return transcript or "[ovozli xabar]"
+    return msg.text or "[ovozli xabar]"
 
 
 async def apply_reminder(cid, rem):
@@ -195,8 +191,7 @@ async def apply_memory(cid, mem, frows):
             for f in (mem.get("remember") or [])[:2]:
                 if isinstance(f, str) and f.strip():
                     t = f.strip()[:200]
-                    await asyncio.to_thread(
-                        save_fact, cid, t)
+                    await asyncio.to_thread(save_fact, cid, t)
                     saved.append(t)
             for n in (mem.get("forget") or [])[:3]:
                 if (isinstance(n, int) and n not in seen
@@ -216,7 +211,7 @@ async def apply_memory(cid, mem, frows):
     return extra
 
 
-async def deliver(msg, ctx, cid, vm, st, answer, speech, extra):
+async def deliver(msg, ctx, cid, vm, st, answer, extra):
     """Javobni yuboradi: matn, ovoz yoki ikkalasi (ovoz sozlamasiga qarab)."""
     want_voice = (vm == "always"
                   or (vm == "auto" and bool(msg.voice)))
@@ -224,7 +219,7 @@ async def deliver(msg, ctx, cid, vm, st, answer, speech, extra):
     if want_voice:
         try:
             await ctx.bot.send_chat_action(cid, "record_voice")
-            audio = await speak(speech or answer, st)
+            audio = await speak(answer, st)
         except Exception as e:
             print("TTS xato:", e)
     if audio and vm == "auto":
@@ -261,30 +256,30 @@ async def handle(update, ctx):
             list_facts, cid))[-60:]
         vm = st.get("vmode") or "auto"
 
-        # 1) ko'rsatma + 2) suhbat tarixi + yangi xabar
+        # 1-bosqich: erkin matn javob
         system = await build_system(cid, st, pack, msg, vm, frows)
         contents = history_contents(history)
         parts, pack = await build_parts(msg, ctx, cid, st, pack)
         contents.append(types.Content(role="user", parts=parts))
-
-        # 3) Gemini
         cfg = types.GenerateContentConfig(
             system_instruction=system, temperature=1.0,
-            safety_settings=SAFETY,
-            response_mime_type="application/json")
-        r = await gen(
-            models=CHAT_MODELS, contents=contents, config=cfg)
+            safety_settings=SAFETY)
+        r = await gen(models=CHAT_MODELS, contents=contents,
+                      config=cfg)
+        answer = (r.text or "").strip() or "..."
 
-        # 4) javobni o'qish, eslatma va xotira
-        answer, rem, mem, stk, img, speech, user_text = \
-            parse_reply(r, msg)
-        extra = await apply_reminder(cid, rem)
-        extra += await apply_memory(cid, mem, frows)
+        # 2-bosqich: yordamchi ishlar (JSON)
+        j = await extract_side(parts, answer, frows, pack)
+        transcript = None if msg.photo else j.get("transcript")
+        user_text = user_text_for(msg, transcript)
+        extra = await apply_reminder(cid, j.get("reminder"))
+        extra += await apply_memory(cid, j.get("memory"), frows)
 
-        # 5) yuborish va saqlash
-        await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
+        # yuborish va saqlash
+        await deliver(msg, ctx, cid, vm, st, answer, extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
+        img = j.get("image")
         if isinstance(img, dict) and img.get("query"):
             try:
                 c_ = img.get("count")
@@ -293,6 +288,7 @@ async def handle(update, ctx):
                     msg, str(img["query"])[:80], max(1, min(c_, 4)))
             except Exception as e:
                 print("RASM xato:", e)
+        stk = j.get("sticker")
         if isinstance(stk, str) and pack.get(stk.strip()):
             try:
                 await msg.reply_sticker(
