@@ -325,7 +325,9 @@ async def handle(update, ctx):
                 print("STIKER xato:", e)
         await maybe_extract(cid)
     except Exception as e:
-        print("XATO:", e)
+        import traceback
+        print("XATO:", repr(e))
+        traceback.print_exc()
         if "BLOK" in str(e):
             await msg.reply_text("Hmm, buni shu tarzda ayta "
                                  "olmadim. Boshqacha so'z bilan "
