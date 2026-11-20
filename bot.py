@@ -22,7 +22,6 @@ threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
        .connect_timeout(30).read_timeout(30).write_timeout(30)
        .pool_timeout(30).get_updates_read_timeout(60)
-       .bootstrap_retries(-1)
        .post_init(start_loop).build())
 
 # buyruq nomi -> funksiya
@@ -76,4 +75,4 @@ async def on_error(update, ctx):
     traceback.print_exception(type(err), err, err.__traceback__)
 
 app.add_error_handler(on_error)
-app.run_polling(drop_pending_updates=False)
+app.run_polling(drop_pending_updates=False, bootstrap_retries=-1)
