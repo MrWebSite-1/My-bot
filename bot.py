@@ -14,6 +14,8 @@ from commands import (forget, list_rem, cancel, msg_on, msg_off, my_id,
                       refresh_cmd, style_cmd, voice_cmd, voice_test,
                       sticker_pack_cmd, sticker_off, sticker_on)
 
+from commands import memory_muhim, memory_oddiy, memory_holat
+
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
        .post_init(start_loop).build())
@@ -26,6 +28,9 @@ COMMANDS = [
     ("xabar_bor", msg_on),
     ("xabar_yoq", msg_off),
     ("xotira", memory_cmd),
+    ("xotira_muhim", memory_muhim),
+    ("xotira_oddiy", memory_oddiy),
+    ("xotira_holat", memory_holat),
     ("fakt_ochir", fact_del),
     ("eslab_qol", fact_add),
     ("uslub", style_cmd),

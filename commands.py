@@ -9,7 +9,7 @@ from database import (wipe, pending, del_rem, set_proactive, list_facts,
                       del_fact, save_fact, get_summary, get_settings,
                       update_setting)
 from memory import update_facts
-from utils import mark
+from utils import mark, tier_of, today_state, STATE_TAG
 from voice import tts, tts_gemini
 
 async def forget(update, ctx):
@@ -57,6 +57,31 @@ async def my_id(update, ctx):
     await update.message.reply_text(
         f"Sizning ID: {update.effective_user.id}")
 
+def _fact_tail(x):
+    if x.get("expires_at"):
+        d = datetime.fromisoformat(
+            x["expires_at"].replace("Z", "+00:00"))
+        return f" (gacha: {d.astimezone(TZ).strftime('%d.%m')})"
+    return ""
+
+def _tier_of_row(fact):
+    return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
+
+async def _tier_reply(update, want, title, empty):
+    rows = await asyncio.to_thread(
+        list_facts, update.message.chat_id)
+    lines = []
+    # Raqamlar umumiy ro'yxatdagidek qoladi, shunda /fakt_ochir to'g'ri ishlaydi
+    for i, x in enumerate(rows, 1):
+        if _tier_of_row(x["fact"]) == want:
+            lines.append(f'{i}. {x["fact"]}{_fact_tail(x)}')
+    if not lines:
+        await update.message.reply_text(empty)
+        return
+    await update.message.reply_text(
+        title + "\n" + "\n".join(lines) + "\n\n"
+        "O'chirish: /fakt_ochir 2, 5")
+
 async def memory_cmd(update, ctx):
     rows = await asyncio.to_thread(
         list_facts, update.message.chat_id)
@@ -64,17 +89,40 @@ async def memory_cmd(update, ctx):
         await update.message.reply_text(
             "Hozircha siz haqingizda hech narsa saqlanmagan.")
         return
-    lines = []
-    for i, x in enumerate(rows, 1):
-        tail = ""
-        if x.get("expires_at"):
-            d = datetime.fromisoformat(
-                x["expires_at"].replace("Z", "+00:00"))
-            tail = f" (gacha: {d.astimezone(TZ).strftime('%d.%m')})"
-        lines.append(f'{i}. {x["fact"]}{tail}')
+    cnt = {"muhim": 0, "oddiy": 0, "holat": 0}
+    for x in rows:
+        t = _tier_of_row(x["fact"])
+        if t in cnt:
+            cnt[t] += 1
+    now_state = today_state(rows)
+    holat = now_state if now_state else "aytilmagan"
     await update.message.reply_text(
-        "\n".join(lines) + "\n\nO'chirish: /fakt_ochir 2, 5\n"
+        "Xotira bo'limlari:\n\n"
+        f"🔒 Muhim: {cnt['muhim']} ta (ism, oila, muhim sanalar)\n"
+        f"📝 Oddiy: {cnt['oddiy']} ta (hobbi, odat, loyiha)\n"
+        f"💭 Bugungi holat: {holat}\n\n"
+        "Ko'rish: /xotira_muhim, /xotira_oddiy, /xotira_holat\n"
         "Qo'shish: /eslab_qol <matn>")
+
+async def memory_muhim(update, ctx):
+    await _tier_reply(update, "muhim", "🔒 Muhim:",
+                      "Muhim fakt yo'q.")
+
+async def memory_oddiy(update, ctx):
+    await _tier_reply(update, "oddiy", "📝 Oddiy:",
+                      "Oddiy fakt yo'q.")
+
+async def memory_holat(update, ctx):
+    rows = await asyncio.to_thread(
+        list_facts, update.message.chat_id)
+    st_now = today_state(rows)
+    if st_now:
+        await update.message.reply_text(
+            f"💭 Bugungi holat: {st_now}\n\n"
+            "Yangisini aytsangiz, shu almashadi.")
+    else:
+        await update.message.reply_text(
+            "Bugun kayfiyat yoki holat aytilmagan.")
 
 async def fact_del(update, ctx):
     cid = update.message.chat_id
