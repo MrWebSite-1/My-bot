@@ -18,7 +18,8 @@ from database import (ensure_settings, get_settings, get_history,
                       del_fact, save_reminder, update_setting)
 from images import send_photos
 from memory import maybe_extract
-from utils import parse_json, send_text, style_text, get_pack, mood_text
+from utils import (parse_json, send_text, style_text, get_pack,
+                   mood_text, time_text)
 from voice import speak
 
 
@@ -26,7 +27,7 @@ async def build_system(cid, st, pack, msg, vm, frows):
     facts = [f'{i}. {x["fact"]}' for i, x in enumerate(frows, 1)]
     now = datetime.now(TZ)
     system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
-              + now.strftime("%A, %Y-%m-%d %H:%M"))
+              + time_text(now))
     system += style_text(st)
     system += mood_text(cid)
     if vm == "always" or (vm == "auto" and msg.voice):

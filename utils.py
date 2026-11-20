@@ -61,3 +61,32 @@ def mood_text(cid):
             "tabiiy seze olsin, lekin o'zingni tushuntirib o'tirma.\n"
             "Faktlar orasida 'Ichki hazil' bo'lsa, ularni o'rinli "
             "ishlat, hammasini birdan emas.")
+
+
+UZ_DAYS = ["dushanba", "seshanba", "chorshanba", "payshanba",
+           "juma", "shanba", "yakshanba"]
+
+def time_text(now=None):
+    """Hafta kuni, kun vaqti va shunga mos ohang haqida qisqa kontekst."""
+    now = now or datetime.now(TZ)
+    wd, h = now.weekday(), now.hour
+    if h < 5:
+        per = "tun"
+    elif h < 11:
+        per = "ertalab"
+    elif h < 17:
+        per = "kunduzi"
+    elif h < 22:
+        per = "kechqurun"
+    else:
+        per = "kech tun"
+    hint = ""
+    if wd >= 5:
+        hint = "Bugun dam olish kuni: ohang bo'shroq, rejalar haqida erkin."
+    elif wd == 0:
+        hint = "Bugun dushanba: odamlar odatda ish boshlanishidan charchoq bo'ladi."
+    elif wd == 4:
+        hint = "Bugun juma: hafta oxiri his-tuyg'usi bor."
+    return ("Hozir " + UZ_DAYS[wd] + ", " + per + ", soat "
+            + now.strftime("%H:%M") + ". " + hint
+            + " Shu vaqtga mos his bilan yoz, vaqtni aynan aytib o'tirma.")

@@ -14,7 +14,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
-from utils import style_text, mood_text
+from utils import style_text, mood_text, time_text
 
 def event_context(rows, kind):
     today = datetime.now(TZ).date()
@@ -88,12 +88,9 @@ async def greet(app, cid, kind, prompt_kind=None):
     facts = [x["fact"] for x in frows[-60:]]
     st = await asyncio.to_thread(get_settings, cid)
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
-              + datetime.now(TZ).strftime("%A, %Y-%m-%d %H:%M"))
+              + time_text())
     system += style_text(st)
     system += mood_text(cid)
-    hr = datetime.now(TZ).hour
-    system += ("\n\nHozir " + period_of(hr) + ". Shu vaqtga mos his "
-               "bilan yoz, lekin vaqtni aytib o'tirma.")
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))
