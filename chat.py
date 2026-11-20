@@ -267,7 +267,9 @@ async def deliver(msg, ctx, cid, vm, st, answer, speech, extra):
                 print("OVOZ yuborish xato:", e)
 
 
-REACTIONS = ["❤", "👍", "😂", "🔥", "🤍"]
+# Telegram botlar uchun ruxsat etilgan reaksiyalar (oddiy, bitta belgili)
+REACTIONS = ["👍", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🎉", "🙏", "🤗",
+             "😍", "😎", "🤣", "👀", "😇", "💯", "🏆", "🍾", "🤩", "😘"]
 
 async def maybe_react(msg, ctx):
     """Ba'zan xabarga emoji reaksiya qo'yadi. Gemini so'rovi sarflanmaydi."""
