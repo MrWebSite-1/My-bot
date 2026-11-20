@@ -104,6 +104,8 @@ ANGLES = [
 ]
 
 SLOT_PROMPTS = {
+    "tasodifiy": "Hech qanday sabab yo'q, do'stingga o'zing odamdek yozyapsan. Fikringni, savolingni yoki kayfiyatingni ulash. 1-2 gap. Salom bilan boshlama, oldingi xabarni takrorlama.",
+
     "tushlik": "Foydalanuvchiga tushlik vaqtida qisqa, iliq xabar yoz (1-2 gap). Ovqat yeganmi yoki ishdami, shuni so'rab qo'y, lekin bosim qilma. Oldingi suhbatdagi gapni takrorlama.",
     "jimlik": "Foydalanuvchi bir muddat yozmadi. Unga o'zing birinchi yoz: oxirgi suhbatdagi bir narsani eslat yoki o'zingdagi kichik fikr yoki kayfiyatni ulash. Savol bilan bosim qilma, 1-2 gap, sog'inganingni sezdirma, lekin ortiqcha ham bo'lma.",
     "ertalab": "Foydalanuvchiga ertalabki qisqa, iliq salom "
