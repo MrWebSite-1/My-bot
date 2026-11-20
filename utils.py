@@ -117,7 +117,27 @@ def today_state(rows, now=None):
 def order_facts(rows, limit=60):
     """Muhimlar doim e'tiborda; qolganlari eng yangisidan boshlab, limit ichida."""
     rows = [x for x in rows if not x["fact"].startswith(STATE_TAG)]
+    rows = [x for x in rows if not x["fact"].startswith("[odat]")]
     muhim = [x for x in rows if tier_of(x["fact"]) == "muhim"][-40:]
     rest = [x for x in rows if tier_of(x["fact"]) != "muhim"]
     room = max(0, limit - len(muhim))
     return muhim + (rest[-room:] if room else [])
+
+
+def habit_text(cid):
+    """Kuniga ko'pi bilan bitta odat, ixtiyoriy eslatiladi. Voqea emas, doimiy xususiyat."""
+    from character import HABITS
+    day = datetime.now(TZ).strftime("%Y-%m-%d")
+    rnd = random.Random(f"habit-{cid}-{day}")
+    if rnd.random() > 0.4:
+        return ""
+    h = rnd.choice(HABITS)
+    return ("\n\nOdat (ixtiyoriy, faqat tabiiy bo'lsa): " + h + ". "
+            "Buni o'tgan zamondagi voqea qilib aytma, majburlama.")
+
+
+def parse_odat(fact):
+    """'[odat] emoji|matn|rasm so'rovi' -> (emoji, matn, rasm so'rovi)"""
+    body = fact[len("[odat] "):] if fact.startswith("[odat] ") else fact
+    bits = body.split("|", 2) + ["", "", ""]
+    return bits[0].strip(), bits[1].strip(), bits[2].strip()

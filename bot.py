@@ -15,6 +15,8 @@ from commands import (forget, list_rem, cancel, msg_on, msg_off, my_id,
                       sticker_pack_cmd, sticker_off, sticker_on)
 
 from commands import memory_muhim, memory_oddiy, memory_holat
+from commands import (yozish_cmd, oraliq_cmd, saat_cmd, jimlik_cmd,
+                      yozish_holat, odat_qosh, odatlar, odat_ochir)
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
@@ -31,6 +33,14 @@ COMMANDS = [
     ("xotira_muhim", memory_muhim),
     ("xotira_oddiy", memory_oddiy),
     ("xotira_holat", memory_holat),
+    ("odat_qosh", odat_qosh),
+    ("odatlar", odatlar),
+    ("odat_ochir", odat_ochir),
+    ("yozish", yozish_cmd),
+    ("yozish_oraliq", oraliq_cmd),
+    ("yozish_saat", saat_cmd),
+    ("jimlik", jimlik_cmd),
+    ("yozish_holat", yozish_holat),
     ("fakt_ochir", fact_del),
     ("eslab_qol", fact_add),
     ("uslub", style_cmd),

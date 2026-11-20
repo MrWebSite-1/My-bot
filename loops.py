@@ -14,7 +14,9 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
-from utils import style_text, mood_text, time_text, order_facts, today_state
+from utils import (style_text, mood_text, time_text, order_facts,
+                   today_state, get_pack, parse_odat)
+from images import find_photos
 
 def event_context(rows, kind):
     today = datetime.now(TZ).date()
@@ -58,19 +60,39 @@ def period_of(h):
         return "kechqurun, biroz charchagan bo'lishing mumkin"
     return "tun, uyqusiraysan"
 
-def day_plan(cid, day):
+def day_plan(cid, day, cfg=None):
+    cfg = cfg or {}
     """Chat va kun uchun tasodifiy vaqtlar (daqiqada), har safar bir xil."""
     rnd = random.Random(f"plan-{cid}-{day}")
-    lo, hi = PROACTIVE_HOURS
-    n = rnd.randint(*PROACTIVE_PER_DAY)
+    lo = cfg.get("pro_from") or PROACTIVE_HOURS[0]
+    hi = cfg.get("pro_to") or PROACTIVE_HOURS[1]
+    mn = cfg.get("pro_min") or PROACTIVE_PER_DAY[0]
+    mx = max(mn, cfg.get("pro_max") or PROACTIVE_PER_DAY[1])
+    gap = cfg.get("pro_gap") or PROACTIVE_GAP
+    n = rnd.randint(mn, mx)
     times = []
     for _ in range(300):
         if len(times) >= n:
             break
         m = rnd.randint(lo * 60, hi * 60 - 1)
-        if all(abs(m - t) >= PROACTIVE_GAP for t in times):
+        if all(abs(m - t) >= gap for t in times):
             times.append(m)
     return sorted(times)
+
+def pick_habit(cid, frows):
+    """Kunda ko'pi bilan bitta odat (ixtiyoriy). Bot o'zi va siz qo'shgan odatlar."""
+    from character import HABITS
+    day = datetime.now(TZ).strftime("%Y-%m-%d")
+    rnd = random.Random(f"habit-{cid}-{day}")
+    if rnd.random() > 0.4:
+        return None
+    pool = [{"text": h, "emoji": "", "query": ""} for h in HABITS]
+    for x in frows:
+        if x["fact"].startswith("[odat] "):
+            e, t, q = parse_odat(x["fact"])
+            if t:
+                pool.append({"text": t, "emoji": e, "query": q})
+    return rnd.choice(pool)
 
 async def greet(app, cid, kind, prompt_kind=None):
     recent = await asyncio.to_thread(get_recent, cid, 2)
@@ -91,6 +113,10 @@ async def greet(app, cid, kind, prompt_kind=None):
               + time_text())
     system += style_text(st)
     system += mood_text(cid)
+    picked = pick_habit(cid, frows)
+    if picked:
+        system += ("\n\nOdat (ixtiyoriy, faqat tabiiy bo'lsa): " + picked["text"]
+                   + ". Buni o'tgan zamondagi voqea qilib aytma, majburlama.")
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring ([muhim] eng muhim, doim e'tiborda; sog'liq va moliya haqidagilarni faqat o'zi so'ralganda ishlat):\n- "
                    + "\n- ".join(facts))
@@ -124,6 +150,19 @@ async def greet(app, cid, kind, prompt_kind=None):
     if text:
         await app.bot.send_message(cid, text)
         await asyncio.to_thread(save_msg, cid, "model", text)
+        if picked:
+            try:
+                if picked["emoji"]:
+                    pack = await get_pack(app.bot, st)
+                    lst = pack.get(picked["emoji"]) or []
+                    if lst:
+                        await app.bot.send_sticker(cid, random.choice(lst))
+                if picked["query"]:
+                    got = await find_photos(picked["query"], 1)
+                    if got:
+                        await app.bot.send_photo(cid, got[0][0])
+            except Exception as e:
+                print("ODAT media xato:", e)
 
 async def proactive_loop(app):
     while True:
@@ -146,7 +185,7 @@ async def proactive_loop(app):
                 except Exception:
                     last_dt = None
                 # 1) Rejalashtirilgan vaqtlar
-                for m in day_plan(cid, day):
+                for m in day_plan(cid, day, row):
                     t = now.replace(hour=m // 60, minute=m % 60,
                                     second=0, microsecond=0)
                     if t > now:
@@ -171,10 +210,11 @@ async def proactive_loop(app):
                 # 2) Uzoq jimlik: user 8 soat yozmasa va bot ham 8 soatdan beri yozmagan bo'lsa
                 if not (JIMLIK_START <= now.hour < JIMLIK_END):
                     continue
+                jh = row.get("jimlik_h") or JIMLIK_HOURS
                 user_last = await asyncio.to_thread(last_user_time, cid)
-                if not user_last or now - user_last < timedelta(hours=JIMLIK_HOURS):
+                if not user_last or now - user_last < timedelta(hours=jh):
                     continue
-                if last_dt and now - last_dt < timedelta(hours=JIMLIK_HOURS):
+                if last_dt and now - last_dt < timedelta(hours=jh):
                     continue
                 if random.random() < 0.5:
                     continue

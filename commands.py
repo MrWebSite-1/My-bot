@@ -65,6 +65,8 @@ def _fact_tail(x):
     return ""
 
 def _tier_of_row(fact):
+    if fact.startswith("[odat]"):
+        return "odat"
     return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
 
 async def _tier_reply(update, want, title, empty):
@@ -266,3 +268,133 @@ async def voice_test(update, ctx):
         print("GEMINI TTS test xato:", e)
         await update.message.reply_text(
             f"Gemini ovozi chiqmadi: {str(e)[:200]}")
+
+
+def _ints(ctx, n):
+    try:
+        vals = [int(a) for a in ctx.args[:n]]
+    except ValueError:
+        return None
+    return vals if len(vals) == n else None
+
+async def yozish_cmd(update, ctx):
+    from database import update_setting
+    v = _ints(ctx, 2)
+    if not v or not (1 <= v[0] <= v[1] <= 10):
+        await update.message.reply_text(
+            "Masalan: /yozish 3 5 (kuniga kamida 3, ko'pi bilan 5 marta)")
+        return
+    cid = update.message.chat_id
+    await asyncio.to_thread(update_setting, cid, "pro_min", v[0])
+    await asyncio.to_thread(update_setting, cid, "pro_max", v[1])
+    await update.message.reply_text(
+        f"Endi kuniga {v[0]}–{v[1]} marta o'zim yozaman.")
+
+async def oraliq_cmd(update, ctx):
+    from database import update_setting
+    v = _ints(ctx, 1)
+    if not v or not (30 <= v[0] <= 600):
+        await update.message.reply_text(
+            "Masalan: /yozish_oraliq 75 (ikki xabar orasi, 30 dan 600 daqiqagacha)")
+        return
+    await asyncio.to_thread(update_setting, update.message.chat_id, "pro_gap", v[0])
+    await update.message.reply_text(
+        f"Xabarlar orasida kamida {v[0]} daqiqa bo'ladi.")
+
+async def saat_cmd(update, ctx):
+    from database import update_setting
+    v = _ints(ctx, 2)
+    if not v or not (0 <= v[0] < v[1] <= 23):
+        await update.message.reply_text(
+            "Masalan: /yozish_saat 8 23 (soat oralig'i, 0 dan 23 gacha)")
+        return
+    cid = update.message.chat_id
+    await asyncio.to_thread(update_setting, cid, "pro_from", v[0])
+    await asyncio.to_thread(update_setting, cid, "pro_to", v[1])
+    await update.message.reply_text(
+        f"Endi {v[0]}:00 dan {v[1]}:00 gacha yozaman.")
+
+async def jimlik_cmd(update, ctx):
+    from database import update_setting
+    v = _ints(ctx, 1)
+    if not v or not (1 <= v[0] <= 72):
+        await update.message.reply_text(
+            "Masalan: /jimlik 8 (siz necha soat yozmasangiz, o'zim yozaman)")
+        return
+    await asyncio.to_thread(update_setting, update.message.chat_id, "jimlik_h", v[0])
+    await update.message.reply_text(
+        f"Siz {v[0]} soat yozmasangiz, o'zim yozaman.")
+
+async def yozish_holat(update, ctx):
+    from database import get_settings
+    st = await asyncio.to_thread(get_settings, update.message.chat_id)
+    mn = st.get("pro_min") or 3
+    mx = st.get("pro_max") or 5
+    await update.message.reply_text(
+        "O'zim yozish sozlamalari:\n"
+        f"• Kuniga: {mn}–{mx} marta\n"
+        f"• Orasi: kamida {st.get('pro_gap') or 75} daqiqa\n"
+        f"• Soatlar: {st.get('pro_from') or 8}:00–{st.get('pro_to') or 23}:00\n"
+        f"• Jimlik: {st.get('jimlik_h') or 8} soat\n\n"
+        "O'zgartirish: /yozish, /yozish_oraliq, /yozish_saat, /jimlik")
+
+async def odat_qosh(update, ctx):
+    from database import save_fact, list_facts
+    cid = update.message.chat_id
+    raw = " ".join(ctx.args).strip()
+    if not raw:
+        await update.message.reply_text(
+            "Masalan: /odat_qosh ☕ Ertalab kofe ichaman | coffee cup morning\n"
+            "(| dan keyin rasm qidiruvi, ixtiyoriy)")
+        return
+    parts = raw.split(" ", 1)
+    emoji, body = "", raw
+    if len(parts) == 2 and not any(c.isascii() and c.isalnum() for c in parts[0]):
+        emoji, body = parts[0], parts[1]
+    bits = [b.strip() for b in body.split("|")]
+    text = bits[0][:150]
+    query = bits[1][:60] if len(bits) > 1 else ""
+    if not text:
+        await update.message.reply_text("Odat matnini yozing.")
+        return
+    rows = await asyncio.to_thread(list_facts, cid)
+    if sum(1 for x in rows if x["fact"].startswith("[odat]")) >= 10:
+        await update.message.reply_text(
+            "Ko'pi bilan 10 ta odat bo'ladi. Avval /odat_ochir bilan birini o'chiring.")
+        return
+    await asyncio.to_thread(save_fact, cid, f"[odat] {emoji}|{text}|{query}")
+    extra = f" (rasm: {query})" if query else ""
+    await update.message.reply_text(f"Odat qo'shildi: {emoji} {text}{extra}".strip())
+
+async def _my_odatlar(cid):
+    from database import list_facts
+    rows = await asyncio.to_thread(list_facts, cid)
+    return [x for x in rows if x["fact"].startswith("[odat]")]
+
+async def odatlar(update, ctx):
+    from utils import parse_odat
+    od = await _my_odatlar(update.message.chat_id)
+    if not od:
+        await update.message.reply_text(
+            "Hali o'zingiz qo'shgan odat yo'q. /odat_qosh bilan qo'shing.")
+        return
+    lines = []
+    for i, x in enumerate(od, 1):
+        e, t, q = parse_odat(x["fact"])
+        extra = f" (rasm: {q})" if q else ""
+        lines.append(f"{i}. {e} {t}{extra}".strip())
+    await update.message.reply_text(
+        "Sizning odatlaringiz:\n" + "\n".join(lines)
+        + "\n\nO'chirish: /odat_ochir 2")
+
+async def odat_ochir(update, ctx):
+    from database import del_fact
+    cid = update.message.chat_id
+    v = _ints(ctx, 1)
+    od = await _my_odatlar(cid)
+    if not v or not (1 <= v[0] <= len(od)):
+        await update.message.reply_text(
+            "Raqamini yozing, masalan: /odat_ochir 2 (ro'yxat: /odatlar)")
+        return
+    await asyncio.to_thread(del_fact, cid, od[v[0] - 1]["id"])
+    await update.message.reply_text("Odat o'chirildi.")

@@ -96,8 +96,14 @@ def ensure_settings(cid):
         ignore_duplicates=True).execute()
 
 def proactive_chats():
-    r = (db.table("settings").select("chat_id,last_slot")
-         .eq("proactive", True).execute())
+    try:
+        r = (db.table("settings").select(
+                "chat_id,last_slot,pro_min,pro_max,pro_gap,pro_from,pro_to,jimlik_h")
+             .eq("proactive", True).execute())
+    except Exception as e:
+        print("Yozish ustunlari yo'q (SQL'ni ishga tushiring):", e)
+        r = (db.table("settings").select("chat_id,last_slot")
+             .eq("proactive", True).execute())
     return r.data
 
 def set_slot(cid, slot):

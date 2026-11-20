@@ -24,7 +24,8 @@ def norm_item(it):
 
 async def update_facts(cid):
     hist = await asyncio.to_thread(get_recent, cid, 30)
-    rows = (await asyncio.to_thread(list_facts, cid))[-80:]
+    rows = [r for r in (await asyncio.to_thread(list_facts, cid))
+            if not r["fact"].startswith("[odat]")][-80:]
     today = datetime.now(TZ).strftime("%Y-%m-%d")
     old = "\n".join(f'{i}. {x["fact"]}'
                     for i, x in enumerate(rows, 1)) or "(hali yo'q)"
