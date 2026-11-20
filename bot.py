@@ -60,4 +60,4 @@ for name, fn in COMMANDS:
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO | filters.Sticker.ALL |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
-app.run_polling()
+app.run_polling(bootstrap_retries=-1)
