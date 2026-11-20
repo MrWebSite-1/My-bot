@@ -19,11 +19,11 @@ from database import (ensure_settings, get_settings, get_history,
 from images import send_photos
 from memory import maybe_extract
 from utils import (parse_json, send_text, style_text, get_pack,
-                   mood_text, time_text)
+                   mood_text, time_text, order_facts, with_tier, today_state)
 from voice import speak
 
 
-async def build_system(cid, st, pack, msg, vm, frows):
+async def build_system(cid, st, pack, msg, vm, frows, state=None):
     facts = [f'{i}. {x["fact"]}' for i, x in enumerate(frows, 1)]
     now = datetime.now(TZ)
     system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
@@ -55,10 +55,13 @@ async def build_system(cid, st, pack, msg, vm, frows):
                    "o'zing rasm chiza olmaysan. So'ralmasa "
                    "image null bo'lsin.")
     if facts:
-        system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
+        system += ("\n\nFoydalanuvchi haqida bilganlaring ([muhim] eng muhim, doim e'tiborda; sog'liq va moliya haqidagilarni faqat o'zi so'ralganda ishlat):\n- "
                    + "\n- ".join(facts))
-    if any(x["fact"].startswith("Ochiq ish") for x in frows):
+    if any("Ochiq ish" in x["fact"] for x in frows):
         system += ("\n\nFaktlarda 'Ochiq ish' bor: suhbat o'rinli bo'lsa, natijasini tabiiy so'ra, bosim qilmasdan.")
+    if state:
+        system += ("\n\nBugungi holat (foydalanuvchi aytgan): " + state
+                   + ". Shu kun davomida hisobga ol, lekin o'zing eslatib o'tirma.")
     summ = await asyncio.to_thread(get_summary, cid)
     if summ:
         system += ("\n\nOldingi suhbatlar xulosasi (faqat "
@@ -190,6 +193,23 @@ async def apply_reminder(cid, rem):
     return extra
 
 
+async def apply_state(cid, state):
+    """Bugungi kayfiyatni saqlaydi; eski holatni almashtiradi."""
+    if not isinstance(state, str):
+        return
+    text = state.strip()[:150]
+    if not text or text.lower() in ("null", "none"):
+        return
+    from database import del_fact as _del, list_facts as _lf
+    from utils import STATE_TAG
+    today = datetime.now(TZ).strftime("%Y-%m-%d")
+    rows = await asyncio.to_thread(_lf, cid)
+    for x in rows:
+        if x["fact"].startswith(STATE_TAG):
+            await asyncio.to_thread(_del, cid, x["id"])
+    await asyncio.to_thread(
+        save_fact, cid, STATE_TAG + today + "] " + text)
+
 async def apply_memory(cid, mem, frows):
     """Foydalanuvchi so'raganda faktni saqlaydi yoki o'chiradi."""
     extra = ""
@@ -200,7 +220,7 @@ async def apply_memory(cid, mem, frows):
                 if isinstance(f, str) and f.strip():
                     t = f.strip()[:200]
                     await asyncio.to_thread(
-                        save_fact, cid, t)
+                        save_fact, cid, with_tier(t, "oddiy"))
                     saved.append(t)
             for n in (mem.get("forget") or [])[:3]:
                 if (isinstance(n, int) and n not in seen
@@ -259,12 +279,13 @@ async def handle(update, ctx):
         st = await asyncio.to_thread(get_settings, cid)
         pack = await get_pack(ctx.bot, st)
         history = await asyncio.to_thread(get_history, cid)
-        frows = (await asyncio.to_thread(
-            list_facts, cid))[-60:]
+        raw_facts = await asyncio.to_thread(list_facts, cid)
+        frows = order_facts(raw_facts)
+        state_now = today_state(raw_facts)
         vm = st.get("vmode") or "auto"
 
         # 1) ko'rsatma + 2) suhbat tarixi + yangi xabar
-        system = await build_system(cid, st, pack, msg, vm, frows)
+        system = await build_system(cid, st, pack, msg, vm, frows, state_now)
         contents = history_contents(history)
         parts, pack = await build_parts(msg, ctx, cid, st, pack)
         contents.append(types.Content(role="user", parts=parts))
@@ -282,6 +303,7 @@ async def handle(update, ctx):
             parse_reply(r, msg)
         extra = await apply_reminder(cid, rem)
         extra += await apply_memory(cid, mem, frows)
+        await apply_state(cid, j.get("state"))
 
         # 5) yuborish va saqlash
         await deliver(msg, ctx, cid, vm, st, answer, speech, extra)

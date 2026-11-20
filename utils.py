@@ -90,3 +90,34 @@ def time_text(now=None):
     return ("Hozir " + UZ_DAYS[wd] + ", " + per + ", soat "
             + now.strftime("%H:%M") + ". " + hint
             + " Shu vaqtga mos his bilan yoz, vaqtni aynan aytib o'tirma.")
+
+
+TIERS = ("muhim", "oddiy", "yengil")
+
+def tier_of(fact):
+    for t in TIERS:
+        if fact.startswith("[" + t + "]"):
+            return t
+    return "oddiy"
+
+def with_tier(fact, default="oddiy"):
+    if any(fact.startswith("[" + t + "]") for t in TIERS):
+        return fact
+    return "[" + default + "] " + fact
+
+STATE_TAG = "[holat "
+
+def today_state(rows, now=None):
+    """Shu kun uchun foydalanuvchi aytgan kayfiyat/holat, bo'lmasa None."""
+    today = (now or datetime.now(TZ)).strftime("%Y-%m-%d")
+    tag = STATE_TAG + today + "] "
+    found = [x["fact"][len(tag):] for x in rows if x["fact"].startswith(tag)]
+    return found[-1] if found else None
+
+def order_facts(rows, limit=60):
+    """Muhimlar doim e'tiborda; qolganlari eng yangisidan boshlab, limit ichida."""
+    rows = [x for x in rows if not x["fact"].startswith(STATE_TAG)]
+    muhim = [x for x in rows if tier_of(x["fact"]) == "muhim"][-40:]
+    rest = [x for x in rows if tier_of(x["fact"]) != "muhim"]
+    room = max(0, limit - len(muhim))
+    return muhim + (rest[-room:] if room else [])

@@ -14,7 +14,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
-from utils import style_text, mood_text, time_text
+from utils import style_text, mood_text, time_text, order_facts, today_state
 
 def event_context(rows, kind):
     today = datetime.now(TZ).date()
@@ -85,15 +85,19 @@ async def greet(app, cid, kind, prompt_kind=None):
         print("SALOM tasodifan o'tkazildi", cid)
         return
     history = await asyncio.to_thread(get_history, cid)
-    facts = [x["fact"] for x in frows[-60:]]
+    facts = [x["fact"] for x in order_facts(frows)]
     st = await asyncio.to_thread(get_settings, cid)
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + time_text())
     system += style_text(st)
     system += mood_text(cid)
     if facts:
-        system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
+        system += ("\n\nFoydalanuvchi haqida bilganlaring ([muhim] eng muhim, doim e'tiborda; sog'liq va moliya haqidagilarni faqat o'zi so'ralganda ishlat):\n- "
                    + "\n- ".join(facts))
+    st_now = today_state(frows)
+    if st_now:
+        system += ("\n\nBugungi holat (foydalanuvchi aytgan): " + st_now
+                   + ". Shuni hisobga ol, lekin eslatib o'tirma.")
     summ = await asyncio.to_thread(get_summary, cid)
     if summ:
         system += ("\n\nOldingi suhbatlar xulosasi (faqat "
@@ -102,7 +106,7 @@ async def greet(app, cid, kind, prompt_kind=None):
                      for h in history[-8:])
     prompt = SLOT_PROMPTS[prompt_kind or kind]
     opens = [x["fact"] for x in frows
-             if x["fact"].startswith("Ochiq ish")]
+             if "Ochiq ish" in x["fact"]]
     if opens and not ev and random.random() < 0.5:
         prompt += ("\n\nOchiq ish: " + random.choice(opens)
                    + ". Shu haqida tabiiy so'ra (natijasi qanday bo'ldi), bir marta, bosim qilmasdan.")

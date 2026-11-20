@@ -5,6 +5,7 @@ from datetime import datetime
 from google.genai import types
 from ai import gen
 from config import TZ, FALLBACKS, EXTRACT_EVERY, SUMMARY_EVERY
+from utils import tier_of, with_tier
 from database import (get_recent, list_facts, update_fact, del_fact,
                       save_fact, get_summary, set_summary, count_user)
 
@@ -33,6 +34,7 @@ async def update_facts(cid):
         "Sen foydalanuvchi haqidagi faktlar ro'yxatini "
         "yuritasan. Quyida mavjud raqamlangan faktlar va "
         "foydalanuvchining oxirgi xabarlari.\n\n"
+        "DARAJA: har yangi fakt [muhim], [oddiy] yoki [yengil] bilan boshlansin. [muhim]: ism, oila, yaqinlar, muhim sanalar, katta qarorlar, sog'liq va moliya. [oddiy]: hobbi, odat, did, loyiha. [yengil]: bir martalik mayda gaplar va kayfiyat (bularni qo'shma, saqlanmaydi).\n"
         "DOIMIY FAKT: ism va laqab, oila va yaqinlar, ish yoki "
         "o'qish, doimiy qiziqish va hobbi, uzoq muddatli "
         "maqsad va loyihalar, doimiy odat va afzalliklar, "
@@ -80,16 +82,24 @@ async def update_facts(cid):
             continue
         n = it.get("n")
         f, u = norm_item(it)
+        if f and isinstance(n, int) and 1 <= n <= len(rows):
+            f = with_tier(f, tier_of(rows[n - 1]["fact"]))
         if isinstance(n, int) and 1 <= n <= len(rows) and f:
             await asyncio.to_thread(
                 update_fact, cid, rows[n - 1]["id"], f, u)
     for n in (d.get("delete") or [])[:3]:
-        if isinstance(n, int) and 1 <= n <= len(rows):
+        if (isinstance(n, int) and 1 <= n <= len(rows)
+                and tier_of(rows[n - 1]["fact"]) != "muhim"
+                and not rows[n - 1]["fact"].startswith("[holat ")):
             await asyncio.to_thread(
                 del_fact, cid, rows[n - 1]["id"])
     have = {x["fact"] for x in rows}
     for it in (d.get("add") or [])[:3]:
         f, u = norm_item(it)
+        if f:
+            f = with_tier(f, "oddiy")
+        if f and tier_of(f) == "yengil":
+            continue
         if f and f not in have:
             await asyncio.to_thread(save_fact, cid, f, u)
 
