@@ -101,7 +101,12 @@ async def greet(app, cid, kind, prompt_kind=None):
     hist = "\n".join(f'{h["role"]}: {h["content"]}'
                      for h in history[-8:])
     prompt = SLOT_PROMPTS[prompt_kind or kind]
-    if ev:
+    opens = [x["fact"] for x in frows
+             if x["fact"].startswith("Ochiq ish")]
+    if opens and not ev and random.random() < 0.5:
+        prompt += ("\n\nOchiq ish: " + random.choice(opens)
+                   + ". Shu haqida tabiiy so'ra (natijasi qanday bo'ldi), bir marta, bosim qilmasdan.")
+    elif ev:
         prompt += "\n\nMUHIM: " + ev
     else:
         prompt += "\n\nBu safar: " + random.choice(ANGLES) + "."

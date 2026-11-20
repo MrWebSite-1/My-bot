@@ -38,6 +38,7 @@ async def update_facts(cid):
         "maqsad va loyihalar, doimiy odat va afzalliklar, "
         "muhim sana.\n"
         "ICHKI HAZIL: foydalanuvchi bilan botning o'rtasidagi takrorlanadigan hazil, laqab, ichki so'z yoki birgalikdagi esdalik. Shunday yoz: 'Ichki hazil: ...'.\n"
+        "OCHIQ ISH: foydalanuvchi aytgan, hali natijasi noma'lum narsa (intervyu, imtihon natijasi, shifokor javobi, kutilayotgan qaror). Shunday yoz: 'Ochiq ish: ...'. Natijasi aytilganda o'sha faktni replace yoki delete qil.\n"
         "MUDDATLI FAKT: aniq sanasi bor kelgusi voqea "
         "(imtihon, safar, uchrashuv, topshiriq muddati). "
         "Unga \"until\" qo'sh: voqeadan keyingi kun "

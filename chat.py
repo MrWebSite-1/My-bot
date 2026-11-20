@@ -57,6 +57,8 @@ async def build_system(cid, st, pack, msg, vm, frows):
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring:\n- "
                    + "\n- ".join(facts))
+    if any(x["fact"].startswith("Ochiq ish") for x in frows):
+        system += ("\n\nFaktlarda 'Ochiq ish' bor: suhbat o'rinli bo'lsa, natijasini tabiiy so'ra, bosim qilmasdan.")
     summ = await asyncio.to_thread(get_summary, cid)
     if summ:
         system += ("\n\nOldingi suhbatlar xulosasi (faqat "

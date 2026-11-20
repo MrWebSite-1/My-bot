@@ -94,7 +94,7 @@ RULES = (
     "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
     "Vaqt aniq bo'lmasa reminder null qil va answer'da vaqtni "
     "so'ra. "
-    "memory: foydalanuvchi o'zi aytgan doimiy faktlarni (ism, yaqinlari, ish yoki o'qish, sevimli narsalari, muhim rejalari va sanalari) so'ramasa ham saqla (ichki hazil va laqablarni ham): {\"remember\": [\"qisqa fakt\"], \"forget\": [raqam]}. Kayfiyat, bir martalik savol va eslatmalarni saqlama. Ro'yxatda bor faktni qayta yozma. Foydalanuvchi 'unut' yoki 'bu noto'g'ri' desa, forget dan foydalan. Aks holda null. "
+    "memory: foydalanuvchi o'zi aytgan doimiy faktlarni (ism, yaqinlari, ish yoki o'qish, sevimli narsalari, muhim rejalari va sanalari) so'ramasa ham saqla (ichki hazil, laqab va ochiq ishlarni ham): {\"remember\": [\"qisqa fakt\"], \"forget\": [raqam]}. Kayfiyat, bir martalik savol va eslatmalarni saqlama. Ro'yxatda bor faktni qayta yozma. Foydalanuvchi 'unut' yoki 'bu noto'g'ri' desa, forget dan foydalan. Aks holda null. "
     "Hech qachon o'zboshimchalik bilan unutma.")
 
 ANGLES = [
