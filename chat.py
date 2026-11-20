@@ -303,7 +303,8 @@ async def handle(update, ctx):
             parse_reply(r, msg)
         extra = await apply_reminder(cid, rem)
         extra += await apply_memory(cid, mem, frows)
-        await apply_state(cid, j.get("state"))
+        state_val = (parse_json(r.text) or {}).get("state")
+        await apply_state(cid, state_val)
 
         # 5) yuborish va saqlash
         await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
