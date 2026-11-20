@@ -20,8 +20,6 @@ from commands import (yozish_cmd, oraliq_cmd, saat_cmd, jimlik_cmd,
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
-       .connect_timeout(30).read_timeout(30).write_timeout(30)
-       .pool_timeout(30).get_updates_read_timeout(60)
        .post_init(start_loop).build())
 
 # buyruq nomi -> funksiya
@@ -62,17 +60,4 @@ for name, fn in COMMANDS:
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO | filters.Sticker.ALL |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
-import traceback
-from telegram.error import TimedOut, NetworkError
-
-async def on_error(update, ctx):
-    """Barcha xatolar shu yerda ushlanadi. Tarmoq timeout'lari botni to'xtatmaydi."""
-    err = ctx.error
-    if isinstance(err, (TimedOut, NetworkError)):
-        print("TARMOQ (e'tiborsiz qoldirildi):", repr(err))
-        return
-    print("XATO (umumiy):", repr(err))
-    traceback.print_exception(type(err), err, err.__traceback__)
-
-app.add_error_handler(on_error)
-app.run_polling(drop_pending_updates=False, bootstrap_retries=-1)
+app.run_polling()

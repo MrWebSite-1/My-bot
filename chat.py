@@ -10,7 +10,6 @@ handle() bosqichlarni ketma-ket chaqiradi:
 import asyncio, random
 from datetime import datetime, timezone
 from google.genai import types
-from telegram import ReactionTypeEmoji
 from ai import gen, SAFETY
 from character import BASE, RULES
 from config import (TZ, UTC_FMT, REPEATS, CHAT_MODELS, IMAGES_ON)
@@ -267,25 +266,9 @@ async def deliver(msg, ctx, cid, vm, st, answer, speech, extra):
                 print("OVOZ yuborish xato:", e)
 
 
-# Telegram botlar uchun ruxsat etilgan reaksiyalar (oddiy, bitta belgili)
-REACTIONS = ["👍", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🎉", "🙏", "🤗",
-             "😍", "😎", "🤣", "👀", "😇", "💯", "🏆", "🍾", "🤩", "😘"]
-
-async def maybe_react(msg, ctx):
-    """Ba'zan xabarga emoji reaksiya qo'yadi. Gemini so'rovi sarflanmaydi."""
-    if random.random() > 0.2:
-        return
-    try:
-        await ctx.bot.set_message_reaction(
-            chat_id=msg.chat_id, message_id=msg.message_id,
-            reaction=[ReactionTypeEmoji(emoji=random.choice(REACTIONS))])
-    except Exception as e:
-        print("REAKSIYA xato:", e)
-
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
-    await maybe_react(msg, ctx)
     await asyncio.to_thread(ensure_settings, cid)
     try:
         await ctx.bot.send_chat_action(cid, "typing")
@@ -324,11 +307,6 @@ async def handle(update, ctx):
         await apply_state(cid, state_val)
 
         # 5) yuborish va saqlash
-        await asyncio.sleep(min(2.5, 0.6 + len(answer) / 150))
-        try:
-            await ctx.bot.send_chat_action(cid, "typing")
-        except Exception:
-            pass
         await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
@@ -348,9 +326,7 @@ async def handle(update, ctx):
                 print("STIKER xato:", e)
         await maybe_extract(cid)
     except Exception as e:
-        import traceback
-        print("XATO:", repr(e))
-        traceback.print_exc()
+        print("XATO:", e)
         if "BLOK" in str(e):
             await msg.reply_text("Hmm, buni shu tarzda ayta "
                                  "olmadim. Boshqacha so'z bilan "

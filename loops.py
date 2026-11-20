@@ -148,11 +148,6 @@ async def greet(app, cid, kind, prompt_kind=None):
             system_instruction=system, temperature=1.0))
     text = (r.text or "").strip()
     if text:
-        try:
-            await app.bot.send_chat_action(cid, "typing")
-        except Exception:
-            pass
-        await asyncio.sleep(min(3, 1 + len(text) / 120))
         await app.bot.send_message(cid, text)
         await asyncio.to_thread(save_msg, cid, "model", text)
         if picked:

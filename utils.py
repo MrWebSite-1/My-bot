@@ -87,9 +87,6 @@ def time_text(now=None):
         hint = "Bugun dushanba: odamlar odatda ish boshlanishidan charchoq bo'ladi."
     elif wd == 4:
         hint = "Bugun juma: hafta oxiri his-tuyg'usi bor."
-    if per in ("tun", "kech tun"):
-        hint += (" Hozir tun: javoblaring qisqa, sekinroq va kam emoji bilan,"
-                 " uyqusirab yozayotgandek.")
     return ("Hozir " + UZ_DAYS[wd] + ", " + per + ", soat "
             + now.strftime("%H:%M") + ". " + hint
             + " Shu vaqtga mos his bilan yoz, vaqtni aynan aytib o'tirma.")
