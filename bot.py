@@ -60,4 +60,17 @@ for name, fn in COMMANDS:
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO | filters.Sticker.ALL |
      (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
-app.run_polling()
+import traceback
+from telegram.error import TimedOut, NetworkError
+
+async def on_error(update, ctx):
+    """Barcha xatolar shu yerda ushlanadi. Tarmoq timeout'lari botni to'xtatmaydi."""
+    err = ctx.error
+    if isinstance(err, (TimedOut, NetworkError)):
+        print("TARMOQ (e'tiborsiz qoldirildi):", repr(err))
+        return
+    print("XATO (umumiy):", repr(err))
+    traceback.print_exception(type(err), err, err.__traceback__)
+
+app.add_error_handler(on_error)
+app.run_polling(drop_pending_updates=False)
