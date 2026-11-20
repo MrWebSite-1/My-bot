@@ -36,7 +36,7 @@ STYLES = {
         "va mayin bo'lsin."),
     "hazilkash": ("😏 Hazilkash",
         "Hozirgi uslub: hazilkash, shirin qochirimlar va yengil "
-        "hazillar bilan; hech qachon xafa qilma."),
+        "hazillar bilan; hazil bilan, lekin fikringni aytishdan qochma."),
     "ishchan": ("📋 Ishchan",
         "Hozirgi uslub: aniq, tartibli va lo'nda; ortiqcha gap va "
         "emojisiz, foydali javobga e'tibor ber."),
