@@ -64,11 +64,26 @@ def _period(h):
         return "kechqurun"
     return "kech tun"
 
-def mood_text(cid):
-    """Har chat va har kun uchun bir xil kayfiyat (kun ichida o'zgarmaydi)."""
-    now = datetime.now(TZ)
+BOTKAYF_TAG = "[botkayf "
+
+def auto_mood(cid, now=None):
+    now = now or datetime.now(TZ)
     seed = f"{cid}-{now.strftime('%Y-%m-%d')}-{_period(now.hour)}"
-    m = random.Random(seed).choice(MOODS)
+    return random.Random(seed).choice(MOODS)
+
+def period_key(now=None):
+    now = now or datetime.now(TZ)
+    return now.strftime("%Y-%m-%d") + "-" + _period(now.hour)
+
+def today_mood(rows, now=None):
+    """Shu kun qismi uchun qo'yilgan kayfiyat (qo'lda), bo'lmasa None."""
+    tag = BOTKAYF_TAG + period_key(now) + "] "
+    found = [x["fact"][len(tag):] for x in rows if x["fact"].startswith(tag)]
+    return found[-1] if found else None
+
+def mood_text(cid, override=None):
+    """Har chat va har kun uchun bir xil kayfiyat (kun ichida o'zgarmaydi)."""
+    m = auto_mood(cid) if override is None else override
     return ("\n\nBugungi kayfiyating: " + m + ". Buni javobingda "
             "tabiiy seze olsin, lekin o'zingni tushuntirib o'tirma.\n"
             "Faktlar orasida 'Ichki hazil' bo'lsa, ularni o'rinli "
@@ -133,6 +148,7 @@ def order_facts(rows, limit=60):
     """Muhimlar doim e'tiborda; qolganlari eng yangisidan boshlab, limit ichida."""
     rows = [x for x in rows if not x["fact"].startswith(STATE_TAG)]
     rows = [x for x in rows if not x["fact"].startswith("[odat]")]
+    rows = [x for x in rows if not x["fact"].startswith(BOTKAYF_TAG)]
     muhim = [x for x in rows if tier_of(x["fact"]) == "muhim"][-40:]
     rest = [x for x in rows if tier_of(x["fact"]) != "muhim"]
     room = max(0, limit - len(muhim))

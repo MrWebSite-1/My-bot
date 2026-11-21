@@ -67,6 +67,8 @@ def _fact_tail(x):
 def _tier_of_row(fact):
     if fact.startswith("[odat]"):
         return "odat"
+    if fact.startswith("[botkayf "):
+        return "boshqa"
     return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
 
 async def _tier_reply(update, want, title, empty):
@@ -398,3 +400,51 @@ async def odat_ochir(update, ctx):
         return
     await asyncio.to_thread(del_fact, cid, od[v[0] - 1]["id"])
     await update.message.reply_text("Odat o'chirildi.")
+
+
+async def kayfiyat_cmd(update, ctx):
+    from database import list_facts
+    from utils import auto_mood, today_mood, period_key
+    cid = update.message.chat_id
+    rows = await asyncio.to_thread(list_facts, cid)
+    over = today_mood(rows)
+    cur = over if over else auto_mood(cid)
+    kind = "qo'lda qo'yilgan" if over else "avtomatik"
+    await update.message.reply_text(
+        f"Hozirgi kayfiyatim ({kind}): {cur}\n"
+        f"Qism: {period_key().split('-', 3)[-1]} (faqat shu qism uchun)\n\n"
+        "O'zgartirish: /kayfiyat_qoy <matn>\n"
+        "Qo'lda qo'yilganini olib tashlash: /kayfiyat_tozala")
+
+async def kayfiyat_qoy(update, ctx):
+    from database import save_fact, list_facts, del_fact
+    from utils import BOTKAYF_TAG, period_key
+    cid = update.message.chat_id
+    text = " ".join(ctx.args).strip()[:150]
+    if not text:
+        await update.message.reply_text(
+            "Masalan: /kayfiyat_qoy sokin va biroz o'ychan")
+        return
+    key = BOTKAYF_TAG + period_key() + "] "
+    rows = await asyncio.to_thread(list_facts, cid)
+    for x in rows:
+        if x["fact"].startswith(key):
+            await asyncio.to_thread(del_fact, cid, x["id"])
+    await asyncio.to_thread(save_fact, cid, key + text)
+    await update.message.reply_text(
+        f"Endi shu qism uchun kayfiyatim: {text}")
+
+async def kayfiyat_tozala(update, ctx):
+    from database import list_facts, del_fact
+    from utils import BOTKAYF_TAG, period_key
+    cid = update.message.chat_id
+    key = BOTKAYF_TAG + period_key() + "] "
+    rows = await asyncio.to_thread(list_facts, cid)
+    n = 0
+    for x in rows:
+        if x["fact"].startswith(key):
+            await asyncio.to_thread(del_fact, cid, x["id"])
+            n += 1
+    await update.message.reply_text(
+        "Qo'lda qo'yilgan kayfiyat olib tashlandi, endi avtomatik." if n
+        else "Qo'lda qo'yilgan kayfiyat yo'q edi.")

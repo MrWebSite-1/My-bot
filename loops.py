@@ -15,7 +15,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
 from utils import (style_text, mood_text, time_text, order_facts,
-                   today_state, get_pack, parse_odat)
+                   today_state, get_pack, parse_odat, today_mood)
 from images import find_photos
 
 def event_context(rows, kind):
@@ -112,7 +112,7 @@ async def greet(app, cid, kind, prompt_kind=None):
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + time_text())
     system += style_text(st)
-    system += mood_text(cid)
+    system += mood_text(cid, today_mood(frows))
     picked = pick_habit(cid, frows)
     if picked:
         system += ("\n\nOdat (ixtiyoriy, faqat tabiiy bo'lsa): " + picked["text"]

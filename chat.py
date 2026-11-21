@@ -20,17 +20,17 @@ from database import (ensure_settings, get_settings, get_history,
 from images import send_photos
 from memory import maybe_extract
 from utils import (parse_json, send_text, style_text, get_pack,
-                   mood_text, time_text, order_facts, with_tier, today_state)
+                   mood_text, time_text, order_facts, with_tier, today_state, today_mood)
 from voice import speak
 
 
-async def build_system(cid, st, pack, msg, vm, frows, state=None):
+async def build_system(cid, st, pack, msg, vm, frows, state=None, mood_over=None):
     facts = [f'{i}. {x["fact"]}' for i, x in enumerate(frows, 1)]
     now = datetime.now(TZ)
     system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
               + time_text(now))
     system += style_text(st)
-    system += mood_text(cid)
+    system += mood_text(cid, mood_over)
     if vm == "always" or (vm == "auto" and msg.voice):
         system += ("\n\nBu javob OVOZ bilan yuboriladi: speech "
                    "maydonini to'ldir. Bu answer'ning og'zaki, "
@@ -314,7 +314,8 @@ async def handle(update, ctx):
         vm = st.get("vmode") or "auto"
 
         # 1) ko'rsatma + 2) suhbat tarixi + yangi xabar
-        system = await build_system(cid, st, pack, msg, vm, frows, state_now)
+        system = await build_system(cid, st, pack, msg, vm, frows, state_now,
+                                    today_mood(raw_facts))
         contents = history_contents(history)
         parts, pack = await build_parts(msg, ctx, cid, st, pack)
         contents.append(types.Content(role="user", parts=parts))

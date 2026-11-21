@@ -16,7 +16,8 @@ from commands import (forget, list_rem, cancel, msg_on, msg_off, my_id,
 
 from commands import memory_muhim, memory_oddiy, memory_holat
 from commands import (yozish_cmd, oraliq_cmd, saat_cmd, jimlik_cmd,
-                      yozish_holat, odat_qosh, odatlar, odat_ochir)
+                      yozish_holat, odat_qosh, odatlar, odat_ochir,
+                      kayfiyat_cmd, kayfiyat_qoy, kayfiyat_tozala)
 
 threading.Thread(target=run_web, daemon=True).start()
 app = (ApplicationBuilder().token(os.environ["BOT_TOKEN"])
@@ -41,6 +42,9 @@ COMMANDS = [
     ("yozish_saat", saat_cmd),
     ("jimlik", jimlik_cmd),
     ("yozish_holat", yozish_holat),
+    ("kayfiyat", kayfiyat_cmd),
+    ("kayfiyat_qoy", kayfiyat_qoy),
+    ("kayfiyat_tozala", kayfiyat_tozala),
     ("fakt_ochir", fact_del),
     ("eslab_qol", fact_add),
     ("uslub", style_cmd),
