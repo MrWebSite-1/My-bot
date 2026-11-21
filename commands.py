@@ -506,7 +506,7 @@ async def eksport_cmd(update, ctx):
             continue
         if f.startswith("[odat] "):
             e, t, q = parse_odat(f)
-            odat.append(f"{e} {t}" + (f" (rasm: {q})" if q else "")).strip()
+            odat.append((f"{e} {t}" + (f" (rasm: {q})" if q else "")).strip())
             continue
         text = f
         for p in prefixes:
