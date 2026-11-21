@@ -12,6 +12,24 @@ TAG_RE = re.compile(r"<[^>]+>")
 UA = {"User-Agent": "RezeBot/1.0 (personal Telegram bot)"}
 DL_UA = {"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"}
 
+# Rasm ko'rsatilmaydigan so'rovlar: mualliflik huquqi ostidagi seriya/personajlar
+# va botning o'zi (uning haqiqiy rasmi yo'q)
+SELF_TERMS = ["reze", "rezе", "rеze"]
+COPYRIGHT_TERMS = [
+    "chainsaw man", "naruto", "one piece", "jujutsu", "attack on titan",
+    "dragon ball", "pokemon", "pokémon", "harry potter", "marvel", "avengers",
+    "spiderman", "spider-man", "batman", "superman", "disney", "pixar",
+    "nintendo", "mario", "zelda", "frozen", "simpsons", "anime character",
+]
+
+def blocked_reason(query):
+    q = query.lower()
+    if any(t in q for t in COPYRIGHT_TERMS):
+        return "copyright"
+    if any(t in q for t in SELF_TERMS):
+        return "self"
+    return None
+
 # O'zbek va rus so'zlari -> inglizcha (Pixabay va Pexels inglizchada yaxshi ishlaydi)
 WORDS = {
     "kofe": "coffee", "qahva": "coffee", "кофе": "coffee",
@@ -215,6 +233,17 @@ async def find_photos(query, n):
         return out
 
 async def send_photos(msg, query, count, fallback=None):
+    reason = blocked_reason(query) or (blocked_reason(fallback) if fallback else None)
+    if reason == "self":
+        await msg.reply_text(
+            "O'zimning rasmimni tashlay olmayman, chunki menda haqiqiy yuz yo'q 🙂 "
+            "Boshqa narsa, masalan manzara yoki kitob rasmini so'rashingiz mumkin.")
+        return
+    if reason == "copyright":
+        await msg.reply_text(
+            "Bu seriya yoki personaj rasmini tashlay olmayman. "
+            "Boshqa mavzu aytsangiz, topishga harakat qilaman.")
+        return
     got = await find_photos(query, count)
     if not got and fallback:
         print(f"RASM: model so'rovi topilmadi, asl matn bilan: '{fallback}'")
