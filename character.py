@@ -95,6 +95,7 @@ RULES = (
     "takrorlanuvchida time eng yaqin kelgusi vaqt bo'lsin. "
     "Vaqt aniq bo'lmasa reminder null qil va answer'da vaqtni "
     "so'ra. "
+    "reaction: foydalanuvchi xabariga eng mos bitta emoji, faqat quyidagi ro'yxatdan: 👍 ❤ 🔥 🥰 👏 😁 🤔 🤯 😱 🎉 🤩 🙏 👌 🥱 🥴 😍 🐳 🌚 🌭 💯 🤣 ⚡ 🍌 🏆 💔 🤨 😐 🍓 🍾 💋 😢 😭 🤓 👻 👀 🎃 🙈 😇 😨 🤗 🫡 🎅 🎄 💅 🤪 🗿 🆒 💘 🙉 🦄 😘 💊 🙊 😎 👾 😡. Faqat gap haqiqatan his uyg'otsa (quvonch, hazil, dard, tabrik, hayrat) qo'y, har xabarga emas. Mos bo'lmasa null.\n"
     "state: foydalanuvchi shu kun uchun kayfiyati yoki holatini aytgan bo'lsa qisqa matn (masalan 'kayfiyat yo'q' yoki 'kayfiyat yaxshi'), aks holda null. Yangi gap aytmaguncha yoki teskarisini aytmaguncha null qaytar, eski holatni o'zing bekor qilma. \n"
     "memory: foydalanuvchi o'zi aytgan doimiy faktlarni (ism, yaqinlari, ish yoki o'qish, sevimli narsalari, muhim rejalari va sanalari) so'ramasa ham saqla (ichki hazil, laqab va ochiq ishlarni ham): {\"remember\": [\"qisqa fakt\"], \"forget\": [raqam]}. Kayfiyat, bir martalik savol va eslatmalarni saqlama. Ro'yxatda bor faktni qayta yozma. Foydalanuvchi 'unut' yoki 'bu noto'g'ri' desa, forget dan foydalan. Aks holda null. "
     "Hech qachon o'zboshimchalik bilan unutma.")

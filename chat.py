@@ -277,21 +277,27 @@ REACTIONS = [
     "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾", "😡",
 ]
 
-async def maybe_react(msg, ctx):
-    """Ba'zan xabarga emoji reaksiya qo'yadi. Gemini so'rovi sarflanmaydi."""
-    if random.random() > 0.2:
-        return
+async def react_to(msg, ctx, emoji):
+    """Model tanlagan (gapga mos) emoji; mos bo'lmasa kamroq tasodifiy reaksiya."""
+    clean = emoji.replace("\ufe0f", "").strip() if isinstance(emoji, str) else ""
+    if clean in REACTIONS:
+        if random.random() > 0.7:
+            return
+        choice = clean
+    else:
+        if random.random() > 0.1:
+            return
+        choice = random.choice(REACTIONS)
     try:
         await ctx.bot.set_message_reaction(
             chat_id=msg.chat_id, message_id=msg.message_id,
-            reaction=[ReactionTypeEmoji(emoji=random.choice(REACTIONS))])
+            reaction=[ReactionTypeEmoji(emoji=choice)])
     except Exception as e:
         print("REAKSIYA xato:", e)
 
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
-    await maybe_react(msg, ctx)
     await asyncio.to_thread(ensure_settings, cid)
     try:
         await ctx.bot.send_chat_action(cid, "typing")
@@ -328,6 +334,7 @@ async def handle(update, ctx):
         extra += await apply_memory(cid, mem, frows)
         state_val = (parse_json(r.text) or {}).get("state")
         await apply_state(cid, state_val)
+        await react_to(msg, ctx, (parse_json(r.text) or {}).get("reaction"))
 
         # 5) yuborish va saqlash
         await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
