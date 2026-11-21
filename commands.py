@@ -448,3 +448,43 @@ async def kayfiyat_tozala(update, ctx):
     await update.message.reply_text(
         "Qo'lda qo'yilgan kayfiyat olib tashlandi, endi avtomatik." if n
         else "Qo'lda qo'yilgan kayfiyat yo'q edi.")
+
+
+async def holat_cmd(update, ctx):
+    from database import list_facts, get_settings, messages_between
+    from config import CHAT_MODELS, FALLBACKS, PIXABAY_KEY, TZ
+    from images import PEXELS_KEY
+    from datetime import datetime, timezone
+    cid = update.message.chat_id
+    rows = await asyncio.to_thread(list_facts, cid)
+    cnt = {"muhim": 0, "oddiy": 0, "holat": 0}
+    for x in rows:
+        t = _tier_of_row(x["fact"])
+        if t in cnt:
+            cnt[t] += 1
+    st = await asyncio.to_thread(get_settings, cid)
+    now = datetime.now(TZ)
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today = await asyncio.to_thread(
+        messages_between, cid,
+        start.astimezone(timezone.utc).isoformat(),
+        now.astimezone(timezone.utc).isoformat())
+    user_today = sum(1 for m in today if m["role"] == "user")
+    models = CHAT_MODELS if CHAT_MODELS else FALLBACKS
+    srcs = ["Openverse", "Wikimedia"]
+    if PIXABAY_KEY:
+        srcs.append("Pixabay")
+    if PEXELS_KEY:
+        srcs.append("Pexels")
+    proactive = st.get("proactive", True) if st else True
+    yoz_holat = "yoqilgan" if proactive else "o'chirilgan"
+    await update.message.reply_text(
+        "📊 Holat\n\n"
+        f"Bugun siz yozgan xabarlar: {user_today}\n"
+        f"Saqlangan faktlar: muhim {cnt['muhim']}, oddiy {cnt['oddiy']}\n"
+        f"Bugungi holat: {'bor' if cnt['holat'] else 'aytilmagan'}\n"
+        f"O'zi yozish: {yoz_holat}\n"
+        f"Javob modeli: {models[0]}\n"
+        f"Zaxira modellar: {', '.join(FALLBACKS)}\n"
+        f"Rasm manbalari: {', '.join(srcs)}\n\n"
+        "Gemini kunlik limitini AI Studio → Rate limit bo'limidan ko'ring.")
