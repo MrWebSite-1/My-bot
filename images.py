@@ -10,6 +10,7 @@ PEXELS_KEY = os.environ.get("PEXELS_KEY", "")
 
 TAG_RE = re.compile(r"<[^>]+>")
 UA = {"User-Agent": "RezeBot/1.0 (personal Telegram bot)"}
+DL_UA = {"User-Agent": "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"}
 
 # O'zbek va rus so'zlari -> inglizcha (Pixabay va Pexels inglizchada yaxshi ishlaydi)
 WORDS = {
@@ -77,6 +78,27 @@ def to_english(query):
     out = [x for x in out if x]
     return " ".join(out[:4]) or query
 
+async def search_pixabay(c, query, n):
+    r = await _get(c, "https://pixabay.com/api/", params={
+        "key": PIXABAY_KEY, "q": query[:100],
+        "image_type": "photo", "safesearch": "true",
+        "per_page": 20})
+    hits = r.json().get("hits", [])
+    random.shuffle(hits)
+    return [{"url": h.get("largeImageURL") or h["webformatURL"],
+             "who": h.get("user") or "?", "src": "Pixabay"}
+            for h in hits[:n + 2]]
+
+async def search_pexels(c, query, n):
+    r = await _get(c, "https://api.pexels.com/v1/search", params={
+        "query": query[:100], "per_page": 15, "size": "medium"},
+        headers={"Authorization": PEXELS_KEY})
+    photos = r.json().get("photos", [])
+    random.shuffle(photos)
+    return [{"url": p["src"]["large"],
+             "who": p.get("photographer") or "?", "src": "Pexels"}
+            for p in photos[:n + 2]]
+
 async def _get(c, url, **kw):
     """GET; 429 (limit) bo'lsa bir marta kutib qayta urinadi."""
     r = await c.get(url, **kw)
@@ -99,7 +121,7 @@ async def search_openverse(c, query, n):
             continue
         who = (h.get("creator") or "noma'lum")[:60]
         lic = (h.get("license") or "").upper()
-        out.append({"url": u, "src": "Openverse",
+        out.append({"url": u, "alt": h.get("thumbnail"), "src": "Openverse",
                     "who": f"{who} (CC {lic})" if lic else who})
         if len(out) >= n + 2:
             break
@@ -179,13 +201,17 @@ async def find_photos(query, n):
         for p in res:
             if len(out) >= n:
                 break
-            try:
-                d = await c.get(p["url"], headers=UA)
-                d.raise_for_status()
-                if len(d.content) < 9000000:
-                    out.append((d.content, p))
-            except Exception as e:
-                print("YUKLASH xato:", repr(e))
+            for u in [p.get("url"), p.get("alt")]:
+                if not u:
+                    continue
+                try:
+                    d = await c.get(u, headers=DL_UA)
+                    d.raise_for_status()
+                    if len(d.content) < 9000000:
+                        out.append((d.content, p))
+                        break
+                except Exception as e:
+                    print("YUKLASH xato:", repr(e))
         return out
 
 async def send_photos(msg, query, count, fallback=None):
