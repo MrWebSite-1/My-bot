@@ -337,6 +337,11 @@ async def handle(update, ctx):
         await react_to(msg, ctx, (parse_json(r.text) or {}).get("reaction"))
 
         # 5) yuborish va saqlash
+        await asyncio.sleep(min(2.5, 0.6 + len(answer) / 150))
+        try:
+            await ctx.bot.send_chat_action(cid, "typing")
+        except Exception:
+            pass
         await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
