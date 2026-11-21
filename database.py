@@ -170,3 +170,10 @@ def last_user_time(cid):
         return None
     return datetime.fromisoformat(
         r.data[0]["created_at"].replace("Z", "+00:00"))
+
+
+def messages_between(cid, start, end):
+    r = (db.table("messages").select("role,content,created_at")
+         .eq("chat_id", cid).gte("created_at", start).lt("created_at", end)
+         .order("id").execute())
+    return r.data or []

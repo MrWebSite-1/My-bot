@@ -26,7 +26,8 @@ async def update_facts(cid):
     hist = await asyncio.to_thread(get_recent, cid, 30)
     rows = [r for r in (await asyncio.to_thread(list_facts, cid))
             if not r["fact"].startswith("[odat]")
-            and not r["fact"].startswith("[botkayf ")][-80:]
+            and not r["fact"].startswith("[botkayf ")
+            and not r["fact"].startswith("[kecha ")][-80:]
     today = datetime.now(TZ).strftime("%Y-%m-%d")
     old = "\n".join(f'{i}. {x["fact"]}'
                     for i, x in enumerate(rows, 1)) or "(hali yo'q)"

@@ -17,6 +17,11 @@ from database import (get_recent, list_facts, get_history, get_settings,
 from utils import (style_text, mood_text, time_text, order_facts,
                    today_state, get_pack, parse_odat, today_mood)
 from images import find_photos
+from ai import gen, SAFETY
+from config import FALLBACKS
+from database import messages_between, save_fact, del_fact
+from google.genai import types
+from datetime import timezone, timedelta
 
 def event_context(rows, kind):
     today = datetime.now(TZ).date()
@@ -94,6 +99,43 @@ def pick_habit(cid, frows):
                 pool.append({"text": t, "emoji": e, "query": q})
     return rnd.choice(pool)
 
+async def ensure_digest(cid, frows):
+    """Kechagi suhbatning qisqa mavzusi; bir kunda bir marta yaratiladi."""
+    from utils import KECHA_TAG
+    now = datetime.now(TZ)
+    yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    tag = KECHA_TAG + yday + "] "
+    for x in frows:
+        if x["fact"].startswith(tag):
+            return x["fact"][len(tag):]
+    start = datetime.strptime(yday, "%Y-%m-%d").replace(tzinfo=TZ)
+    end = start + timedelta(days=1)
+    rows = await asyncio.to_thread(
+        messages_between, cid,
+        start.astimezone(timezone.utc).isoformat(),
+        end.astimezone(timezone.utc).isoformat())
+    if len(rows) < 4:
+        return None
+    convo = "\n".join(f"{r['role']}: {r['content']}" for r in rows[-60:])[:6000]
+    prompt = ("Quyida kechagi suhbat. Asosiy mavzuni bir-ikki gapda, o'zbekcha yoz. "
+              "Faqat matn.\n\n" + convo)
+    try:
+        r = await gen(models=FALLBACKS, contents=[types.Content(
+            role="user", parts=[types.Part(text=prompt)])],
+            config=types.GenerateContentConfig(
+                temperature=0.3, safety_settings=SAFETY))
+        text = (r.text or "").strip()[:200]
+    except Exception as e:
+        print("KECHA xato:", e)
+        return None
+    if not text:
+        return None
+    for x in frows:
+        if x["fact"].startswith(KECHA_TAG):
+            await asyncio.to_thread(del_fact, cid, x["id"])
+    await asyncio.to_thread(save_fact, cid, tag + text)
+    return text
+
 async def greet(app, cid, kind, prompt_kind=None):
     recent = await asyncio.to_thread(get_recent, cid, 2)
     frows = await asyncio.to_thread(list_facts, cid)
@@ -112,6 +154,10 @@ async def greet(app, cid, kind, prompt_kind=None):
     system = (BASE + "\n\nHozirgi Toshkent vaqti: "
               + time_text())
     system += style_text(st)
+    kecha = await ensure_digest(cid, frows) if kind == "ertalab" else None
+    if kecha and random.random() < 0.5:
+        system += ("\n\nKecha suhbatimiz: " + kecha
+                   + ". Shu haqida tabiiy so'rashing mumkin, bosimsiz.")
     system += mood_text(cid, today_mood(frows))
     picked = pick_habit(cid, frows)
     if picked:

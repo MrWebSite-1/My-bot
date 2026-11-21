@@ -67,7 +67,7 @@ def _fact_tail(x):
 def _tier_of_row(fact):
     if fact.startswith("[odat]"):
         return "odat"
-    if fact.startswith("[botkayf "):
+    if fact.startswith("[botkayf ") or fact.startswith("[kecha "):
         return "boshqa"
     return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
 

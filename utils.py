@@ -65,6 +65,7 @@ def _period(h):
     return "kech tun"
 
 BOTKAYF_TAG = "[botkayf "
+KECHA_TAG = "[kecha "
 
 def auto_mood(cid, now=None):
     now = now or datetime.now(TZ)
@@ -149,6 +150,7 @@ def order_facts(rows, limit=60):
     rows = [x for x in rows if not x["fact"].startswith(STATE_TAG)]
     rows = [x for x in rows if not x["fact"].startswith("[odat]")]
     rows = [x for x in rows if not x["fact"].startswith(BOTKAYF_TAG)]
+    rows = [x for x in rows if not x["fact"].startswith(KECHA_TAG)]
     muhim = [x for x in rows if tier_of(x["fact"]) == "muhim"][-40:]
     rest = [x for x in rows if tier_of(x["fact"]) != "muhim"]
     room = max(0, limit - len(muhim))
