@@ -10,6 +10,7 @@ handle() bosqichlarni ketma-ket chaqiradi:
 import asyncio, random
 from datetime import datetime, timezone
 from google.genai import types
+from telegram import ReactionTypeEmoji
 from ai import gen, SAFETY
 from character import BASE, RULES
 from config import (TZ, UTC_FMT, REPEATS, CHAT_MODELS, IMAGES_ON)
@@ -266,9 +267,31 @@ async def deliver(msg, ctx, cid, vm, st, answer, speech, extra):
                 print("OVOZ yuborish xato:", e)
 
 
+# Telegram'ning ruxsat etilgan reaksiyalari (bitta belgili). Iliq xarakterga
+# mos bo'lmaganlari (masalan 🖕, 💩, 🤬, 🤮, 🤡, 😈) va ko'p belgili emojilar chiqarib tashlangan.
+REACTIONS = [
+    "👍", "👎", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🎉", "🤩",
+    "🙏", "👌", "🥱", "🥴", "😍", "🐳", "🌚", "🌭", "💯", "🤣", "⚡", "🍌",
+    "🏆", "💔", "🤨", "😐", "🍓", "🍾", "💋", "😢", "😭", "🤓", "👻", "👀",
+    "🎃", "🙈", "😇", "😨", "🤗", "🫡", "🎅", "🎄", "💅", "🤪", "🗿", "🆒",
+    "💘", "🙉", "🦄", "😘", "💊", "🙊", "😎", "👾", "😡",
+]
+
+async def maybe_react(msg, ctx):
+    """Ba'zan xabarga emoji reaksiya qo'yadi. Gemini so'rovi sarflanmaydi."""
+    if random.random() > 0.2:
+        return
+    try:
+        await ctx.bot.set_message_reaction(
+            chat_id=msg.chat_id, message_id=msg.message_id,
+            reaction=[ReactionTypeEmoji(emoji=random.choice(REACTIONS))])
+    except Exception as e:
+        print("REAKSIYA xato:", e)
+
 async def handle(update, ctx):
     msg = update.message
     cid = msg.chat_id
+    await maybe_react(msg, ctx)
     await asyncio.to_thread(ensure_settings, cid)
     try:
         await ctx.bot.send_chat_action(cid, "typing")
