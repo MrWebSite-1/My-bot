@@ -73,6 +73,26 @@ async def search_pexels(c, query, n):
              "who": p.get("photographer") or "?", "src": "Pexels"}
             for p in photos[:n + 2]]
 
+async def search_openverse(c, query, n):
+    """Openverse: kalitsiz, ochiq litsenziyali rasmlar (CC). mature=false filtri bilan."""
+    r = await c.get("https://api.openverse.org/v1/images/", params={
+        "q": query[:100], "page_size": 20, "mature": "false"}, headers=UA)
+    r.raise_for_status()
+    hits = r.json().get("results", [])
+    random.shuffle(hits)
+    out = []
+    for h in hits:
+        u = h.get("url") or ""
+        if not u.lower().split("?")[0].endswith((".jpg", ".jpeg", ".png")):
+            continue
+        who = (h.get("creator") or "noma'lum")[:60]
+        lic = (h.get("license") or "").upper()
+        out.append({"url": u, "src": "Openverse",
+                    "who": f"{who} (CC {lic})" if lic else who})
+        if len(out) >= n + 2:
+            break
+    return out
+
 async def search_commons(c, query, n):
     r = await c.get("https://commons.wikimedia.org/w/api.php", params={
         "action": "query", "generator": "search",
@@ -108,6 +128,12 @@ async def _search_term(c, term, n):
                 return res
         except Exception as e:
             print("PIXABAY xato:", e)
+    try:
+        res = await search_openverse(c, term, n)
+        if res:
+            return res
+    except Exception as e:
+        print("OPENVERSE xato:", e)
     if PEXELS_KEY:
         try:
             res = await search_pexels(c, term, n)
