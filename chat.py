@@ -351,7 +351,8 @@ async def handle(update, ctx):
                 c_ = img.get("count")
                 c_ = c_ if isinstance(c_, int) else 1
                 await send_photos(
-                    msg, str(img["query"])[:80], max(1, min(c_, 4)))
+                    msg, str(img["query"])[:80], max(1, min(c_, 4)),
+                    fallback=(msg.text or msg.caption or "")[:80] or None)
             except Exception as e:
                 print("RASM xato:", e)
         has_image = isinstance(img, dict) and bool(img.get("query"))

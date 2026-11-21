@@ -188,8 +188,11 @@ async def find_photos(query, n):
                 print("YUKLASH xato:", repr(e))
         return out
 
-async def send_photos(msg, query, count):
+async def send_photos(msg, query, count, fallback=None):
     got = await find_photos(query, count)
+    if not got and fallback:
+        print(f"RASM: model so'rovi topilmadi, asl matn bilan: '{fallback}'")
+        got = await find_photos(fallback, count)
     if not got:
         await msg.reply_text("Bu haqda mos rasm topa olmadim 😔")
         return
