@@ -67,7 +67,7 @@ def _fact_tail(x):
 def _tier_of_row(fact):
     if fact.startswith("[odat]"):
         return "odat"
-    if fact.startswith("[botkayf ") or fact.startswith("[kecha "):
+    if fact.startswith(("[botkayf ", "[kecha ", "[kunoxi ")):
         return "boshqa"
     return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
 
@@ -488,3 +488,49 @@ async def holat_cmd(update, ctx):
         f"Zaxira modellar: {', '.join(FALLBACKS)}\n"
         f"Rasm manbalari: {', '.join(srcs)}\n\n"
         "Gemini kunlik limitini AI Studio → Rate limit bo'limidan ko'ring.")
+
+
+async def eksport_cmd(update, ctx):
+    from io import BytesIO
+    from database import list_facts, pending
+    from config import TZ
+    from datetime import datetime
+    from utils import parse_odat
+    cid = update.message.chat_id
+    rows = await asyncio.to_thread(list_facts, cid)
+    muhim, oddiy, odat = [], [], []
+    prefixes = ("[muhim] ", "[oddiy] ", "[yengil] ")
+    for x in rows:
+        f = x["fact"]
+        if f.startswith(("[holat ", "[botkayf ", "[kecha ", "[kunoxi ")):
+            continue
+        if f.startswith("[odat] "):
+            e, t, q = parse_odat(f)
+            odat.append(f"{e} {t}" + (f" (rasm: {q})" if q else "")).strip()
+            continue
+        text = f
+        for p in prefixes:
+            if text.startswith(p):
+                text = text[len(p):]
+        if _tier_of_row(f) == "muhim":
+            muhim.append(text)
+        else:
+            oddiy.append(text)
+    rems = await asyncio.to_thread(pending, cid)
+    lines = ["REZE: MA'LUMOT EKSPORTI", ""]
+    lines += ["== MUHIM FAKTLAR =="] + [f"- {t}" for t in muhim] + [""]
+    lines += ["== ODDIY FAKTLAR =="] + [f"- {t}" for t in oddiy] + [""]
+    lines += ["== ODATLAR =="] + [f"- {t}" for t in odat] + [""]
+    lines += ["== KUTILAYOTGAN ESLATMALAR =="]
+    for r in rems or []:
+        try:
+            when = datetime.fromisoformat(
+                r["remind_at"].replace("Z", "+00:00")).astimezone(TZ)
+            when = when.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            when = str(r.get("remind_at", ""))
+        lines.append(f"- {r.get('task', '')} ({when})")
+    bio = BytesIO("\n".join(lines).encode("utf-8"))
+    bio.name = "reze-eksport.txt"
+    await update.message.reply_document(
+        document=bio, caption="Mana, saqlangan ma'lumotlaringiz.")

@@ -14,7 +14,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       last_user_time,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
-from utils import (style_text, mood_text, time_text, order_facts,
+from utils import (KUNOXI_TAG, style_text, mood_text, time_text, order_facts,
                    today_state, get_pack, parse_odat, today_mood)
 from images import find_photos
 from ai import gen, SAFETY
@@ -83,6 +83,45 @@ def day_plan(cid, day, cfg=None):
         if all(abs(m - t) >= gap for t in times):
             times.append(m)
     return sorted(times)
+
+async def kun_oxiri(app, cid):
+    """Kechqurun, bugun kamida 4 ta xabar bo'lsa, bir marta qisqa kun oxiri xabari."""
+    now = datetime.now(TZ)
+    day = now.strftime("%Y-%m-%d")
+    rows = await asyncio.to_thread(list_facts, cid)
+    if any(x["fact"].startswith(KUNOXI_TAG + day) for x in rows):
+        return
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    msgs = await asyncio.to_thread(
+        messages_between, cid,
+        start.astimezone(timezone.utc).isoformat(),
+        now.astimezone(timezone.utc).isoformat())
+    if sum(1 for m in msgs if m["role"] == "user") < 4:
+        return
+    await asyncio.to_thread(save_fact, cid, KUNOXI_TAG + day + "] done")
+    convo = "\n".join(f"{m['role']}: {m['content']}" for m in msgs[-60:])[:6000]
+    prompt = ("Quyida bugungi suhbat. Sen Reze: iliq va samimiy. Bugungi suhbatni "
+              "eslab, 2-3 gapli qisqa kun oxiri xabari yoz (o'zbekcha): bugun nima "
+              "haqida gaplashdik va ertaga uchun yengil, bosimsiz bir so'z. "
+              "Ro'yxat, sarlavha yo'q. Faqat matn.\n\n" + convo)
+    try:
+        r = await gen(models=FALLBACKS, contents=[types.Content(
+            role="user", parts=[types.Part(text=prompt)])],
+            config=types.GenerateContentConfig(
+                temperature=0.8, safety_settings=SAFETY))
+        text = (r.text or "").strip()[:400]
+    except Exception as e:
+        print("KUNOXI xato:", repr(e))
+        return
+    if not text:
+        return
+    try:
+        await app.bot.send_chat_action(cid, "typing")
+    except Exception:
+        pass
+    await asyncio.sleep(2)
+    await app.bot.send_message(cid, text)
+    await asyncio.to_thread(save_msg, cid, "model", text)
 
 def pick_habit(cid, frows):
     """Kunda ko'pi bilan bitta odat (ixtiyoriy). Bot o'zi va siz qo'shgan odatlar."""
@@ -259,6 +298,11 @@ async def proactive_loop(app):
                         print("SALOM xato:", e)
                     break  # bir loop aylanishida bitta xabar
                 # 2) Uzoq jimlik: user 8 soat yozmasa va bot ham 8 soatdan beri yozmagan bo'lsa
+                if 21 <= now.hour < 23 and random.random() < 0.5:
+                    try:
+                        await kun_oxiri(app, cid)
+                    except Exception as e:
+                        print("KUNOXI xato:", repr(e))
                 if not (JIMLIK_START <= now.hour < JIMLIK_END):
                     continue
                 jh = row.get("jimlik_h") or JIMLIK_HOURS
