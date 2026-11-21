@@ -354,7 +354,8 @@ async def handle(update, ctx):
                     msg, str(img["query"])[:80], max(1, min(c_, 4)))
             except Exception as e:
                 print("RASM xato:", e)
-        if isinstance(stk, str) and pack.get(stk.strip()):
+        has_image = isinstance(img, dict) and bool(img.get("query"))
+        if isinstance(stk, str) and pack.get(stk.strip()) and not has_image:
             try:
                 await msg.reply_sticker(
                     random.choice(pack[stk.strip()]))

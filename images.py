@@ -1,7 +1,7 @@
 """RASM: tayyor rasm qidirish (Pixabay, Pexels, Wikimedia) va yuborish.
 Qidiruv inglizcha ishlaydi: o'zbek va rus so'zlari avval inglizchaga o'tkaziladi.
 """
-import os, random, re
+import asyncio, os, random, re
 import httpx
 from telegram import InputMediaPhoto
 from config import PIXABAY_KEY
@@ -43,41 +43,53 @@ WORDS = {
     "kun": "day", "день": "day",
 }
 
+# Rasm so'rovidagi buyruq so'zlari (qidiruvga kirmaydi)
+STOP = {"rasm", "rasmi", "rasmini", "rasmga", "rasmlar", "rasmlarini",
+        "tasha", "tashla", "tashlab", "tashing", "tashlang", "ko'rsat",
+        "korsat", "ko'rsating", "ber", "yubor", "menga", "va", "bir",
+        "iltimos", "kerak"}
+SUFFIXES = ("larining", "larini", "lari", "ining", "ini", "ning", "dan",
+            "da", "ga", "ni")
+
+def _stem(w):
+    for suf in SUFFIXES:
+        if w.endswith(suf) and len(w) - len(suf) >= 3:
+            return w[:-len(suf)]
+    return w
+
 def to_english(query):
     q = query.lower().strip()
     if q in WORDS:
         return WORDS[q]
     words = re.findall(r"[a-zA-Z\u0400-\u04FF\u00C0-\u024F']+", q)
-    return " ".join(WORDS.get(w, w) for w in words)
+    out = []
+    for w in words:
+        if w in STOP:
+            continue
+        if w in WORDS:
+            out.append(WORDS[w])
+            continue
+        st = _stem(w)
+        if st in WORDS:
+            out.append(WORDS[st])
+        elif st.isascii():
+            out.append(st)
+    out = [x for x in out if x]
+    return " ".join(out[:4]) or query
 
-async def search_pixabay(c, query, n):
-    r = await c.get("https://pixabay.com/api/", params={
-        "key": PIXABAY_KEY, "q": query[:100],
-        "image_type": "photo", "safesearch": "true",
-        "per_page": 20})
+async def _get(c, url, **kw):
+    """GET; 429 (limit) bo'lsa bir marta kutib qayta urinadi."""
+    r = await c.get(url, **kw)
+    if r.status_code == 429:
+        await asyncio.sleep(3)
+        r = await c.get(url, **kw)
     r.raise_for_status()
-    hits = r.json().get("hits", [])
-    random.shuffle(hits)
-    return [{"url": h.get("largeImageURL") or h["webformatURL"],
-             "who": h.get("user") or "?", "src": "Pixabay"}
-            for h in hits[:n + 2]]
-
-async def search_pexels(c, query, n):
-    r = await c.get("https://api.pexels.com/v1/search", params={
-        "query": query[:100], "per_page": 15, "size": "medium"},
-        headers={"Authorization": PEXELS_KEY})
-    r.raise_for_status()
-    photos = r.json().get("photos", [])
-    random.shuffle(photos)
-    return [{"url": p["src"]["large"],
-             "who": p.get("photographer") or "?", "src": "Pexels"}
-            for p in photos[:n + 2]]
+    return r
 
 async def search_openverse(c, query, n):
     """Openverse: kalitsiz, ochiq litsenziyali rasmlar (CC). mature=false filtri bilan."""
-    r = await c.get("https://api.openverse.org/v1/images/", params={
+    r = await _get(c, "https://api.openverse.org/v1/images/", params={
         "q": query[:100], "page_size": 20, "mature": "false"}, headers=UA)
-    r.raise_for_status()
     hits = r.json().get("results", [])
     random.shuffle(hits)
     out = []
@@ -124,23 +136,25 @@ async def _search_term(c, term, n):
     if PIXABAY_KEY:
         try:
             res = await search_pixabay(c, term, n)
+            print(f"RASM Pixabay '{term}': {len(res)} ta")
             if res:
                 return res
         except Exception as e:
-            print("PIXABAY xato:", e)
+            print("PIXABAY xato:", repr(e))
     try:
         res = await search_openverse(c, term, n)
+        print(f"RASM Openverse '{term}': {len(res)} ta")
         if res:
             return res
     except Exception as e:
-        print("OPENVERSE xato:", e)
+        print("OPENVERSE xato:", repr(e))
     if PEXELS_KEY:
         try:
             res = await search_pexels(c, term, n)
             if res:
                 return res
         except Exception as e:
-            print("PEXELS xato:", e)
+            print("PEXELS xato:", repr(e))
     return []
 
 async def find_photos(query, n):
@@ -156,8 +170,11 @@ async def find_photos(query, n):
         if not res:
             try:
                 res = await search_commons(c, eng or query, n)
+                print(f"RASM Commons '{eng}': {len(res)} ta")
             except Exception as e:
-                print("COMMONS xato:", e)
+                print("COMMONS xato:", repr(e))
+        if not res:
+            print(f"RASM topilmadi: so'rov='{query}', ingliz='{eng}', terminlar={terms}")
         out = []
         for p in res:
             if len(out) >= n:
@@ -168,7 +185,7 @@ async def find_photos(query, n):
                 if len(d.content) < 9000000:
                     out.append((d.content, p))
             except Exception as e:
-                print("YUKLASH xato:", e)
+                print("YUKLASH xato:", repr(e))
         return out
 
 async def send_photos(msg, query, count):
