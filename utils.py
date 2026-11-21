@@ -53,10 +53,22 @@ def mark(cur, key, label):
     return ("✔ " if cur == key else "") + label
 
 
+def _period(h):
+    if h < 5:
+        return "tun"
+    if h < 11:
+        return "ertalab"
+    if h < 17:
+        return "kunduzi"
+    if h < 22:
+        return "kechqurun"
+    return "kech tun"
+
 def mood_text(cid):
     """Har chat va har kun uchun bir xil kayfiyat (kun ichida o'zgarmaydi)."""
-    day = datetime.now(TZ).strftime("%Y-%m-%d")
-    m = random.Random(f"{cid}-{day}").choice(MOODS)
+    now = datetime.now(TZ)
+    seed = f"{cid}-{now.strftime('%Y-%m-%d')}-{_period(now.hour)}"
+    m = random.Random(seed).choice(MOODS)
     return ("\n\nBugungi kayfiyating: " + m + ". Buni javobingda "
             "tabiiy seze olsin, lekin o'zingni tushuntirib o'tirma.\n"
             "Faktlar orasida 'Ichki hazil' bo'lsa, ularni o'rinli "
@@ -87,6 +99,9 @@ def time_text(now=None):
         hint = "Bugun dushanba: odamlar odatda ish boshlanishidan charchoq bo'ladi."
     elif wd == 4:
         hint = "Bugun juma: hafta oxiri his-tuyg'usi bor."
+    if per in ("tun", "kech tun"):
+        hint += (" Hozir tun: javoblaring qisqa, sekinroq va kam emoji bilan,"
+                 " uyqusirab yozayotgandek.")
     return ("Hozir " + UZ_DAYS[wd] + ", " + per + ", soat "
             + now.strftime("%H:%M") + ". " + hint
             + " Shu vaqtga mos his bilan yoz, vaqtni aynan aytib o'tirma.")
