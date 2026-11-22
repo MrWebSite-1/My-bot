@@ -18,9 +18,10 @@ from database import (ensure_settings, get_settings, get_history,
                       list_facts, get_summary, save_msg, save_fact,
                       del_fact, save_reminder, update_setting)
 from images import send_photos
+from database import count_user_messages
 from memory import maybe_extract
 from utils import (parse_json, send_text, style_text, get_pack,
-                   mood_text, time_text, order_facts, with_tier, today_state, today_mood)
+                   mood_text, time_text, order_facts, with_tier, today_state, today_mood, intimacy_text)
 from voice import speak
 
 
@@ -30,6 +31,7 @@ async def build_system(cid, st, pack, msg, vm, frows, state=None, mood_over=None
     system = (BASE + RULES + "\n\nHozirgi Toshkent vaqti: "
               + time_text(now))
     system += style_text(st)
+    system += intimacy_text(await asyncio.to_thread(count_user_messages, cid))
     system += mood_text(cid, mood_over)
     if vm == "always" or (vm == "auto" and msg.voice):
         system += ("\n\nBu javob OVOZ bilan yuboriladi: speech "

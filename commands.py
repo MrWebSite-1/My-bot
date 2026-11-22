@@ -67,7 +67,7 @@ def _fact_tail(x):
 def _tier_of_row(fact):
     if fact.startswith("[odat]"):
         return "odat"
-    if fact.startswith(("[botkayf ", "[kecha ", "[kunoxi ")):
+    if fact.startswith(("[botkayf ", "[kecha ", "[kunoxi ", "[odatrejim] ")):
         return "boshqa"
     return "holat" if fact.startswith(STATE_TAG) else tier_of(fact)
 
@@ -534,3 +534,33 @@ async def eksport_cmd(update, ctx):
     bio.name = "reze-eksport.txt"
     await update.message.reply_document(
         document=bio, caption="Mana, saqlangan ma'lumotlaringiz.")
+
+
+async def odat_rejim_cmd(update, ctx):
+    from database import list_facts, save_fact, del_fact
+    from utils import ODATREJIM_TAG, get_odat_mode
+    cid = update.message.chat_id
+    rows = await asyncio.to_thread(list_facts, cid)
+    arg = ctx.args[0].upper() if ctx.args else ""
+    if not arg:
+        await update.message.reply_text(
+            f"Hozirgi odat rejimi: {get_odat_mode(rows)}\n\n"
+            "A: hozirgi yoki umumiy zamonda (\"hozir choy ichyapman\")\n"
+            "B: kuniga bir marta, o'tgan zamonda (\"bugun kitob o'qidim\")\n"
+            "AB: ikkalasi (standart)\n"
+            "yoq: odat umuman aytilmaydi\n\n"
+            "O'zgartirish: /odat_rejim AB (yoki A, B, yoq). Standartga qaytarish: /odat_rejim tozala")
+        return
+    if arg not in ("A", "B", "AB", "YOQ", "TOZALA"):
+        await update.message.reply_text(
+            "Variantlar: A, B, AB, yoq, tozala. Masalan: /odat_rejim B")
+        return
+    for x in rows:
+        if x["fact"].startswith(ODATREJIM_TAG):
+            await asyncio.to_thread(del_fact, cid, x["id"])
+    if arg == "TOZALA":
+        await update.message.reply_text("Odat rejimi standartga qaytdi: AB.")
+        return
+    val = "yoq" if arg == "YOQ" else arg
+    await asyncio.to_thread(save_fact, cid, ODATREJIM_TAG + val)
+    await update.message.reply_text(f"Odat rejimi endi: {val}")

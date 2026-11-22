@@ -177,3 +177,9 @@ def messages_between(cid, start, end):
          .eq("chat_id", cid).gte("created_at", start).lt("created_at", end)
          .order("id").execute())
     return r.data or []
+
+
+def count_user_messages(cid):
+    r = (db.table("messages").select("id", count="exact")
+         .eq("chat_id", cid).eq("role", "user").limit(1).execute())
+    return r.count or 0

@@ -67,6 +67,7 @@ def _period(h):
 BOTKAYF_TAG = "[botkayf "
 KECHA_TAG = "[kecha "
 KUNOXI_TAG = "[kunoxi "
+ODATREJIM_TAG = "[odatrejim] "
 
 def auto_mood(cid, now=None):
     now = now or datetime.now(TZ)
@@ -153,6 +154,7 @@ def order_facts(rows, limit=60):
     rows = [x for x in rows if not x["fact"].startswith(BOTKAYF_TAG)]
     rows = [x for x in rows if not x["fact"].startswith(KECHA_TAG)]
     rows = [x for x in rows if not x["fact"].startswith(KUNOXI_TAG)]
+    rows = [x for x in rows if not x["fact"].startswith(ODATREJIM_TAG)]
     muhim = [x for x in rows if tier_of(x["fact"]) == "muhim"][-40:]
     rest = [x for x in rows if tier_of(x["fact"]) != "muhim"]
     room = max(0, limit - len(muhim))
@@ -176,3 +178,29 @@ def parse_odat(fact):
     body = fact[len("[odat] "):] if fact.startswith("[odat] ") else fact
     bits = body.split("|", 2) + ["", "", ""]
     return bits[0].strip(), bits[1].strip(), bits[2].strip()
+
+
+def get_odat_mode(rows):
+    """Odat rejimi: A, B, AB (standart), yoq."""
+    found = [x["fact"][len(ODATREJIM_TAG):].strip() for x in rows
+             if x["fact"].startswith(ODATREJIM_TAG)]
+    return found[-1] if found else "AB"
+
+def habit_rule(mode):
+    if "B" in mode:
+        return (". O'tgan zamonda bir marta aytishing mumkin (bugun), "
+                "faqat shu odat haqida, bosimsiz.")
+    return ". Buni o'tgan zamondagi voqea qilib aytma, majburlama."
+
+def intimacy_text(n):
+    """Suhbat uzunligiga qarab sekin samimiylik (foydalanuvchi xabarlari soni bo'yicha)."""
+    if n < 30:
+        s = ("Siz bilan hali yangi tanishmiz: ehtiyotkor, iliq va hurmatli gapir, "
+             "shaxsiy savollarni ortiqcha so'rama.")
+    elif n < 200:
+        s = ("Suhbatimiz ancha tanish: iliqroq va do'stona gapir, lekin sirlarga "
+             "tez kirmagin.")
+    else:
+        s = ("Siz bilan ancha yaqinmiz: samimiy va erkin gapir, lekin egalik yoki "
+             "yakkaxonlik bildirma.")
+    return "\n\n" + s

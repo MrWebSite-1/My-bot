@@ -15,11 +15,12 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       get_summary, save_msg, cleanup_db, proactive_chats,
                       set_slot, due_reminders, advance, mark_done)
 from utils import (KUNOXI_TAG, style_text, mood_text, time_text, order_facts,
-                   today_state, get_pack, parse_odat, today_mood)
+                   today_state, get_pack, parse_odat, today_mood,
+                   intimacy_text, get_odat_mode, habit_rule)
 from images import find_photos
 from ai import gen, SAFETY
 from config import FALLBACKS
-from database import messages_between, save_fact, del_fact
+from database import messages_between, save_fact, del_fact, count_user_messages
 from google.genai import types
 from datetime import timezone, timedelta
 
@@ -126,6 +127,8 @@ async def kun_oxiri(app, cid):
 def pick_habit(cid, frows):
     """Kunda ko'pi bilan bitta odat (ixtiyoriy). Bot o'zi va siz qo'shgan odatlar."""
     from character import HABITS
+    if get_odat_mode(frows) == "yoq":
+        return None
     day = datetime.now(TZ).strftime("%Y-%m-%d")
     rnd = random.Random(f"habit-{cid}-{day}")
     if rnd.random() > 0.4:
@@ -197,11 +200,12 @@ async def greet(app, cid, kind, prompt_kind=None):
     if kecha and random.random() < 0.5:
         system += ("\n\nKecha suhbatimiz: " + kecha
                    + ". Shu haqida tabiiy so'rashing mumkin, bosimsiz.")
+    system += intimacy_text(await asyncio.to_thread(count_user_messages, cid))
     system += mood_text(cid, today_mood(frows))
     picked = pick_habit(cid, frows)
     if picked:
         system += ("\n\nOdat (ixtiyoriy, faqat tabiiy bo'lsa): " + picked["text"]
-                   + ". Buni o'tgan zamondagi voqea qilib aytma, majburlama.")
+                   + habit_rule(get_odat_mode(frows)))
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring ([muhim] eng muhim, doim e'tiborda; sog'liq va moliya haqidagilarni faqat o'zi so'ralganda ishlat):\n- "
                    + "\n- ".join(facts))
