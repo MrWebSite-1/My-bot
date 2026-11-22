@@ -3,8 +3,10 @@ Yangi buyruq qo'shish: commands.py da funksiya yozing, pastda ro'yxatga qo'shing
 """
 import os, threading
 from telegram.ext import (ApplicationBuilder, MessageHandler,
-                          CommandHandler, CallbackQueryHandler, filters)
-from config import ACCESS
+                          CommandHandler, CallbackQueryHandler,
+                          ChatMemberHandler, filters)
+from config import ACCESS, CHAT_OK
+from guard import guarded, on_added
 from server import run_web
 from loops import start_loop
 from chat import handle
@@ -78,11 +80,14 @@ COMMANDS = [
     ("yangila", refresh_cmd),
 ]
 
-app.add_handler(CommandHandler("id", my_id))
+app.add_handler(CommandHandler("id", guarded(my_id, True)))
+app.add_handler(ChatMemberHandler(on_added, ChatMemberHandler.MY_CHAT_MEMBER))
 app.add_handler(CallbackQueryHandler(on_button))
 for name, fn in COMMANDS:
-    app.add_handler(CommandHandler(name, fn, filters=ACCESS))
+    app.add_handler(CommandHandler(
+        name, guarded(fn, True), filters=ACCESS & CHAT_OK))
 app.add_handler(MessageHandler(
     (filters.VOICE | filters.PHOTO | filters.Sticker.ALL |
-     (filters.TEXT & ~filters.COMMAND)) & ACCESS, handle))
+     (filters.TEXT & ~filters.COMMAND)) & ACCESS & CHAT_OK,
+    guarded(handle)))
 app.run_polling(bootstrap_retries=-1)

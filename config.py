@@ -93,14 +93,21 @@ ALLOWED = {int(x) for x in
 ACCESS = (filters.User(user_id=list(ALLOWED))
           if ALLOWED else filters.ALL)
 
-FALLBACKS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+# Guruhlar: faqat shu chat ID'lardagina ishlaydi (manfiy raqamlar, vergul bilan).
+# Bo'sh bo'lsa yoki ALLOWED_IDS bo'sh bo'lsa, bot hech bir guruhda ishlamaydi.
+ALLOWED_CHATS = ({int(x) for x in
+                  os.environ.get("ALLOWED_CHATS", "").split(",")
+                  if x.strip()} if ALLOWED else set())
 
-_cm = os.environ.get("CHAT_MODEL", "").strip()
+# Guruhda murojaat uchun qo'shimcha nomlar (vergul bilan). Asosiy ism
+# character.py dagi NAME'dan olinadi.
+BOT_NAMES = [x.strip().lower() for x in
+             os.environ.get("BOT_NAMES", "").split(",") if x.strip()]
 
-CHAT_MODELS = ([_cm] if _cm else []) + FALLBACKS
-
-# Botning o'zi yozish rejasi: kuniga necha marta, qaysi soatlar oralig'ida,
-# ikki xabar orasida kamida necha daqiqa
-PROACTIVE_HOURS = (8, 23)
-PROACTIVE_PER_DAY = (3, 5)
-PROACTIVE_GAP = 75
+# Qaysi chatlarda ishlash: shaxsiy chat har doim, guruh faqat ro'yxatdagi.
+# Kanal xabarlari va tahrirlangan xabarlar o'tmaydi.
+_PRIV = filters.ChatType.PRIVATE
+if ALLOWED_CHATS:
+    _PRIV = _PRIV | (filters.ChatType.GROUPS &
+                     filters.Chat(chat_id=list(ALLOWED_CHATS)))
+CHAT_OK = filters.UpdateType.MESSAGE & _PRIV

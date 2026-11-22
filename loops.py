@@ -87,6 +87,8 @@ def day_plan(cid, day, cfg=None):
 
 async def kun_oxiri(app, cid):
     """Kechqurun, bugun kamida 4 ta xabar bo'lsa, bir marta qisqa kun oxiri xabari."""
+    if cid < 0:
+        return  # guruhda kun oxiri xabari yo'q
     now = datetime.now(TZ)
     day = now.strftime("%Y-%m-%d")
     rows = await asyncio.to_thread(list_facts, cid)
@@ -179,6 +181,8 @@ async def ensure_digest(cid, frows):
     return text
 
 async def greet(app, cid, kind, prompt_kind=None):
+    if cid < 0:
+        return  # guruhda o'zi yozmaydi
     recent = await asyncio.to_thread(get_recent, cid, 2)
     frows = await asyncio.to_thread(list_facts, cid)
     ev = event_context(frows, kind)
@@ -273,6 +277,8 @@ async def proactive_loop(app):
             rows = await asyncio.to_thread(proactive_chats)
             for row in rows:
                 cid = row["chat_id"]
+                if cid < 0:
+                    continue  # guruhda tasodifiy xabar, jimlik, kun oxiri yo'q
                 last = row.get("last_slot")
                 try:
                     last_dt = datetime.fromisoformat(last) if last else None

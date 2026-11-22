@@ -54,8 +54,11 @@ async def msg_off(update, ctx):
         "Xo'p, endi o'zim yozmayman. Qaytarish: /xabar_bor")
 
 async def my_id(update, ctx):
-    await update.message.reply_text(
-        f"Sizning ID: {update.effective_user.id}")
+    m = update.message
+    text = f"Sizning ID: {update.effective_user.id}"
+    if m.chat.type != "private":
+        text += f"\nChat ID: {m.chat_id}"
+    await m.reply_text(text)
 
 def _fact_tail(x):
     if x.get("expires_at"):

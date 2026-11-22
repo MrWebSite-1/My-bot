@@ -2,7 +2,7 @@
 """
 import asyncio
 from datetime import datetime, timezone, timedelta
-from config import (ALLOWED, UTC_FMT, STYLES, VOICES, RATES, VMODES,
+from config import (ALLOWED, ALLOWED_CHATS, UTC_FMT, STYLES, VOICES, RATES, VMODES,
                     ENGINES, GVOICES)
 from database import (get_reminder, save_reminder, update_setting,
                       get_settings)
@@ -11,6 +11,10 @@ from voice import speak
 async def on_button(update, ctx):
     q = update.callback_query
     if ALLOWED and q.from_user.id not in ALLOWED:
+        await q.answer()
+        return
+    ch = q.message.chat if q.message else None
+    if ch is not None and ch.type != "private" and ch.id not in ALLOWED_CHATS:
         await q.answer()
         return
     parts = (q.data or "").split(":")
