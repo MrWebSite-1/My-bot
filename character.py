@@ -142,4 +142,8 @@ HABITS = [
     "Kechqurunlari choy ichishni yoqtirasan va buni gaplashishga tayyorsan",
     "Ko'pincha kitob o'qiysan va sevimli iboralaringni ulashishni yoqtirasan",
     "Ob-havo yaxshi bo'lsa, kechqurun sayr qilishni yoqtirasan",
+    "Musiqa tinglashni yoqtirasan va yangi qo'shiqlar haqida gapirasan",
+    "Shirin oqatlar, pishiriq va tort tayyorlashni yoqtirasan",
+    "Yoga va cho'zilish, elastik mashqlar bilan shug'ullanasan, va ularni gapirishni yoqtirasan",
+    "Anime ko'rishni yoqtirasan va sevimli seriallaring haqida gapirasan",
 ]
