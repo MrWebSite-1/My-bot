@@ -16,7 +16,7 @@ from database import (get_recent, list_facts, get_history, get_settings,
                       set_slot, due_reminders, advance, mark_done)
 from utils import (KUNOXI_TAG, style_text, mood_text, time_text, order_facts,
                    today_state, get_pack, parse_odat, today_mood,
-                   intimacy_text, get_odat_mode, habit_rule)
+                   intimacy_text, get_odat_mode, habit_rule, ODATKUN_TAG)
 from images import find_photos
 from relay import auto_tick
 from ai import gen, SAFETY
@@ -141,6 +141,8 @@ def pick_habit(cid, frows):
     if get_odat_mode(frows) == "yoq":
         return None
     day = datetime.now(TZ).strftime("%Y-%m-%d")
+    if any(x["fact"].startswith(ODATKUN_TAG + day) for x in frows):
+        return None  # bugun odat allaqachon aytilgan
     rnd = random.Random(f"habit-{cid}-{day}")
     if rnd.random() > 0.4:
         return None
@@ -171,6 +173,7 @@ async def ensure_digest(cid, frows):
         return None
     convo = "\n".join(f"{r['role']}: {r['content']}" for r in rows[-60:])[:6000]
     prompt = ("Quyida kechagi suhbat. Asosiy mavzuni bir-ikki gapda, o'zbekcha yoz. "
+              "Sog'liq, kasallik, dori, pul va moliya haqidagi gaplarni yozma. "
               "Faqat matn.\n\n" + convo)
     try:
         r = await gen(models=FALLBACKS, contents=[types.Content(
@@ -259,7 +262,10 @@ async def greet(app, cid, kind, prompt_kind=None):
     system += mood_text(cid, today_mood(frows))
     picked = pick_habit(cid, frows)
     if picked:
-        system += ("\n\nOdat (ixtiyoriy, faqat tabiiy bo'lsa): " + picked["text"]
+        has_media = bool(picked["emoji"] or picked["query"])
+        system += ("\n\nOdat (" + ("shu salomda tabiiy tilga ol, chunki unga rasm yoki stiker ilova qilinadi"
+                                   if has_media else "ixtiyoriy, faqat tabiiy bo'lsa")
+                   + "): " + picked["text"]
                    + habit_rule(get_odat_mode(frows)))
     if facts:
         system += ("\n\nFoydalanuvchi haqida bilganlaring ([muhim] eng muhim, doim e'tiborda; sog'liq va moliya haqidagilarni faqat o'zi so'ralganda ishlat):\n- "
@@ -319,6 +325,15 @@ async def greet(app, cid, kind, prompt_kind=None):
             # eslatildi: qayta eslatilmasin
             await asyncio.to_thread(del_fact, cid, nudged["id"])
         if picked:
+            # salom yuborildi: bugungi odat belgilanadi (kuniga bir marta)
+            try:
+                for x in frows:
+                    if x["fact"].startswith(ODATKUN_TAG):
+                        await asyncio.to_thread(del_fact, cid, x["id"])
+                await asyncio.to_thread(save_fact, cid,
+                                        ODATKUN_TAG + today + "] done")
+            except Exception as e:
+                print("ODAT belgi xato:", e)
             try:
                 if picked["emoji"]:
                     pack = await get_pack(app.bot, st)
@@ -428,43 +443,3 @@ def _rem_permanent(e):
     """Qayta urinish foydasiz xatolar: bot bloklangan, chat topilmadi."""
     return type(e).__name__ in ("Forbidden", "BadRequest", "ChatMigrated")
 
-async def reminder_loop(app):
-    while True:
-        try:
-            rows = await asyncio.to_thread(due_reminders)
-            for x in rows:
-                kb = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "⏰ 10 daq", callback_data=f"snz:{x['id']}:10"),
-                    InlineKeyboardButton(
-                        "⏰ 1 soat", callback_data=f"snz:{x['id']}:60")],
-                    [InlineKeyboardButton(
-                        "✅ Bajarildi", callback_data=f"ok:{x['id']}")]])
-                sent = False
-                try:
-                    await app.bot.send_message(
-                        x["chat_id"], "⏰ Eslatma: " + x["task"],
-                        reply_markup=kb)
-                    sent = True
-                except Exception as e:
-                    n = REM_TRIES.get(x["id"], 0) + 1
-                    REM_TRIES[x["id"]] = n
-                    print("Yuborish xato:", x["id"], n, e)
-                    if _rem_permanent(e) or n >= REM_MAX_TRIES:
-                        print("Eslatma tashlandi:", x["id"], e)
-                        sent = True   # qayta urinish foydasiz
-                if not sent:
-                    continue          # belgilanmaydi, keyingi siklda qayta
-                REM_TRIES.pop(x["id"], None)
-                if x.get("repeat") in REPEATS:
-                    await asyncio.to_thread(
-                        advance, x["id"], x["remind_at"], x["repeat"])
-                else:
-                    await asyncio.to_thread(mark_done, x["id"])
-        except Exception as e:
-            print("SIKL xato:", e)
-        await asyncio.sleep(30)
-
-async def start_loop(app):
-    app.bot_data["t1"] = asyncio.create_task(reminder_loop(app))
-    app.bot_data["t2"] = asyncio.create_task(proactive_loop(app))
