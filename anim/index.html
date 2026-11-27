@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Hamroh</title>
+<style>
+:root{--bg:#1d2433;--fg:#eef1f7;--dim:#8b95ab;--face:#2c3650;--bub:#f3efe6;--bubfg:#232a3b;--ok:#6fcf97;--off:#e07a7a}
+@media (prefers-color-scheme:light){:root{--bg:#e9edf5;--fg:#1d2433;--dim:#667088;--face:#fff;--bub:#232a3b;--bubfg:#f3efe6}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
+#bubble{min-height:64px;max-width:min(420px,90vw);padding:14px 18px;border-radius:20px 20px 20px 4px;background:var(--bub);color:var(--bubfg);font-size:17px;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
+#bubble.on{opacity:1;transform:none}
+#char{height:min(60vh,520px);width:auto;max-width:90vw;object-fit:contain;transform-origin:50% 100%;animation:breathe 4s ease-in-out infinite;user-select:none;-webkit-user-drag:none;transition:opacity .15s}
+#char.talk{animation:talk .32s ease-in-out infinite}
+#char.think{animation:breathe 1.6s ease-in-out infinite}
+#char.swap{opacity:.25}
+#emoji{display:none;font-size:96px;line-height:1}
+@keyframes breathe{50%{transform:scaleY(1.012)}}
+@keyframes talk{50%{transform:scaleY(1.02) translateY(-2px)}}
+#name{font-size:15px;color:var(--dim)}
+#dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--off);margin-right:6px}
+#dot.ok{background:var(--ok)}
+#setup{display:none;max-width:420px;text-align:center;color:var(--dim)}
+@media (prefers-reduced-motion:reduce){#char,#char.talk,#char.think{animation:none}}
+</style>
+</head>
+<body>
+<div id="bubble" aria-live="polite"></div>
+<img id="char" alt="" aria-hidden="true" draggable="false">
+<div id="emoji" aria-hidden="true">🙂</div>
+<div id="name"><span id="dot"></span><span id="who">…</span></div>
+<p id="setup">Kalit yo'q. Sahifani shunday oching: <code>…/index.html#k=KALIT&amp;s=https://servis.onrender.com</code></p>
+<script>
+/* Hodisa shartnomasi: 04-Jonlantirish-yol-xaritasi.md, 3-bo'lim.
+   J4 da emoji o'rniga rasm: EMO[emotion] ni <img> bilan almashtiring (fayl nomi = hissiyot). */
+const EMO={sevinch:"😊",kulgi:"😂",erkalash:"🥰",xafa:"😔","yig'lash":"😢",jahl:"😠",hayron:"😮",uyqu:"😴",uyalish:"🫣","ma'qullash":"👍",salomlashish:"👋","o'ylash":"🤔",boshqa:"🙂",idle:"🙂"};
+const POLL_MS=2000, BUBBLE_MS=5000, EMO_MS=7000;
+const $=id=>document.getElementById(id);
+const face=$("char"), emo=$("emoji"), bubble=$("bubble");
+let key="", server="", bot="reze", since=null, fails=0, tBub=0, tEmo=0, tTalk=0;
+
+// kalit URL # qismidan olinadi, localStorage ga saqlanadi va manzildan olib tashlanadi
+try{
+  const h=new URLSearchParams(location.hash.slice(1));
+  if(h.get("k")) localStorage.setItem("anim_k",h.get("k"));
+  if(h.get("b")) localStorage.setItem("anim_b",h.get("b").toLowerCase());
+  if(h.get("s")) localStorage.setItem("anim_s",h.get("s").replace(/\/+$/,""));
+  if(location.hash) history.replaceState(null,"",location.pathname+location.search);
+  key=localStorage.getItem("anim_k")||""; server=localStorage.getItem("anim_s")||"";
+  bot=localStorage.getItem("anim_b")||"reze";
+}catch(e){}
+if(!key||!server){ $("setup").style.display="block"; }
+
+/* Rasmlar: img/<bot>/<nom>.png. Yangi rasm qo'shilsa nomini AVAIL ga yozing.
+   Rasmi yo'q hissiyot ALIAS bo'yicha yaqinini, u ham yo'q bo'lsa idle ni ko'rsatadi. */
+const AVAIL=["idle","hayron","xafa","sevinch"];
+const ALIAS={kulgi:"sevinch","ma'qullash":"sevinch",salomlashish:"sevinch","yig'lash":"xafa"};
+const fname=e=>e.replace(/'/g,"");
+function pickImg(e){ if(AVAIL.includes(fname(e))) return fname(e); const a=ALIAS[e]; return a&&AVAIL.includes(a)?a:"idle"; }
+AVAIL.forEach(n=>{ new Image().src="img/"+bot+"/"+n+".png"; });
+let cur="";
+function setFace(e,cls){
+  const n=pickImg(e);
+  face.className=cls||"";
+  if(n===cur) return;
+  cur=n; face.classList.add("swap");
+  face.onerror=()=>{ face.style.display="none"; emo.style.display="block"; emo.textContent=EMO[e]||EMO.boshqa; };
+  face.onload=()=>{ face.style.display=""; emo.style.display="none"; face.classList.remove("swap"); };
+  face.src="img/"+bot+"/"+n+".png";
+}
+function idle(){ setFace("idle"); }
+function say(text){
+  clearTimeout(tBub);
+  if(!text){ bubble.classList.remove("on"); return; }
+  bubble.textContent=text; bubble.classList.add("on");
+  tBub=setTimeout(()=>bubble.classList.remove("on"),BUBBLE_MS);
+}
+function play(ev){
+  who(ev.bot);
+  clearTimeout(tEmo); clearTimeout(tTalk);
+  if(ev.kind==="typing"){ setFace("o'ylash","think"); tEmo=setTimeout(idle,15000); return; }
+  setFace(ev.emotion);
+  say(ev.text);
+  if(ev.speak_ms>0){ face.classList.add("talk"); tTalk=setTimeout(()=>{face.classList.remove("talk");},Math.min(ev.speak_ms,12000)); }
+  tEmo=setTimeout(idle,Math.max(EMO_MS,ev.speak_ms||0));
+}
+function who(n){ if(n){ $("who").textContent=n; const b=n.toLowerCase(); if(b!==bot){ bot=b; cur=""; } } }
+function online(v){ $("dot").className=v?"ok":""; if(!v) $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,"")+" (oflayn)"; else $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,""); }
+
+async function poll(){
+  if(!key||!server) return;
+  try{
+    const r=await fetch(server+"/anim?since="+(since||0),{headers:{"X-Anim-Secret":key},cache:"no-store"});
+    if(r.status===403){ $("setup").style.display="block"; $("setup").textContent="Kalit noto'g'ri."; fails=99; online(false); return; }
+    if(!r.ok) throw new Error(r.status);
+    const d=await r.json(); fails=0; online(true);
+    if(d.last<(since||0)) since=0;           // server qayta ishga tushgan
+    if(since===null){ since=d.last; if(d.events.length) who(d.events[d.events.length-1].bot); }  // eski hodisalar qayta o'ynalmasin
+    else{ for(const ev of d.events){ play(ev); since=Math.max(since,ev.id); } }
+  }catch(e){ if(++fails>=3) online(false); }
+}
+idle(); poll(); setInterval(()=>{ if(fails<99) poll(); },POLL_MS);
+</script>
+</body>
+</html>
