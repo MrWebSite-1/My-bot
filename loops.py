@@ -1,6 +1,7 @@
 """FON ISHLARI: eslatma sikli va botning o'zi birinchi yozishi (salomlar).
 """
 import asyncio, random
+import anim
 from datetime import datetime, timedelta
 from google.genai import types
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -131,6 +132,7 @@ async def kun_oxiri(app, cid):
         pass
     await asyncio.sleep(2)
     await app.bot.send_message(cid, text)
+    anim.proactive(cid, "kun_oxiri", text)
     # belgi faqat muvaffaqiyatli yuborilgandan keyin qo'yiladi
     await asyncio.to_thread(save_fact, cid, KUNOXI_TAG + day + "] done")
     await asyncio.to_thread(save_msg, cid, "model", text)
@@ -316,6 +318,7 @@ async def greet(app, cid, kind, prompt_kind=None):
             pass
         await asyncio.sleep(min(3, 1 + len(text) / 120))
         await app.bot.send_message(cid, text)
+        anim.proactive(cid, "greet", text)
         await asyncio.to_thread(save_msg, cid, "model", text)
         if kind == "kechqurun":
             # shu kechada kun oxiri xabari ikkinchi marta chiqmasin
@@ -464,6 +467,9 @@ async def reminder_loop(app):
                         else "⏰ Eslatma: " + x["task"],
                         reply_markup=kb)
                     sent = True
+                    if ask:
+                        anim.proactive(x["chat_id"], "ask",
+                                       x["task"][len(ASK_TAG):].strip())
                     if ask:   # keyingi javobda nima so'ralganini bilsin
                         try:
                             await asyncio.to_thread(

@@ -27,6 +27,7 @@ from utils import (parse_json, send_text, style_text, get_pack,
 from voice import speak
 from fikr import remember, prompt_text
 import ritm
+import anim
 from database import ASK_TAG, pending
 from relay import repeat_block, peer_answered
 from relay import (group_ctx, group_block, worth_deciding, lock, BUSY,
@@ -425,6 +426,7 @@ async def _handle_core(update, ctx, gx):
     cid = msg.chat_id
     group_b = bool(gx and gx["mode"] == "b")
     await asyncio.to_thread(ensure_settings, cid)
+    anim.typing(cid)
     if not (group_b and not gx["me"]):
         try:
             await ctx.bot.send_chat_action(cid, "typing")
@@ -500,6 +502,10 @@ async def _handle_core(update, ctx, gx):
         sent = await deliver(msg, ctx, cid, vm, st, answer, speech, extra)
         if sent is not None and cid > 0:
             remember(cid, sent.message_id, answer)  # 👎/👍 reaksiya uchun
+        if sent is not None:
+            _j = parse_json(r.text) or {}
+            anim.on_reply(cid, answer, user_text, stk, _j.get("reaction"),
+                          today_mood(raw_facts), speech)
         await asyncio.to_thread(save_msg, cid, "user", user_text)
         await asyncio.to_thread(save_msg, cid, "model", answer)
         if cid > 0:  # faqat lichka
