@@ -142,3 +142,6 @@ SLOT_LATE_MAX_MIN = 240
 PEER_URL = os.environ.get("PEER_URL", "").strip().rstrip("/")
 RELAY_SECRET = os.environ.get("RELAY_SECRET", "").strip()
 PEER_NAME = os.environ.get("PEER_NAME", "").strip()
+
+ANIM_SECRET = os.environ.get("ANIM_SECRET", "").strip()
+ANIM_ORIGIN = os.environ.get("ANIM_ORIGIN", "").strip().rstrip("/")
