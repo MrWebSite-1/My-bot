@@ -13,11 +13,13 @@ html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
 #bubble{min-height:64px;max-width:min(420px,90vw);padding:14px 18px;border-radius:20px 20px 20px 4px;background:var(--bub);color:var(--bubfg);font-size:17px;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
 #bubble.on{opacity:1;transform:none}
-#char{height:min(60vh,520px);width:auto;max-width:90vw;object-fit:contain;transform-origin:50% 100%;animation:breathe 4s ease-in-out infinite;user-select:none;-webkit-user-drag:none;transition:opacity .15s}
+#char{flex:none;height:min(60vh,520px);min-height:240px;width:auto;max-width:90vw;object-fit:contain;transform-origin:50% 100%;animation:breathe 4s ease-in-out infinite;user-select:none;-webkit-user-drag:none;transition:opacity .15s}
 #char.talk{animation:talk .32s ease-in-out infinite}
 #char.think{animation:breathe 1.6s ease-in-out infinite}
 #char.swap{opacity:.25}
-#emoji{display:none;font-size:96px;line-height:1}
+#emoji{font-size:96px;line-height:1}
+#emoji[hidden]{display:none}
+#diag{max-width:420px;text-align:center;font-size:13px;color:var(--dim);min-height:18px}
 @keyframes breathe{50%{transform:scaleY(1.012)}}
 @keyframes talk{50%{transform:scaleY(1.02) translateY(-2px)}}
 #name{font-size:15px;color:var(--dim)}
@@ -30,8 +32,9 @@ body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui
 <body>
 <div id="bubble" aria-live="polite"></div>
 <img id="char" alt="" aria-hidden="true" draggable="false">
-<div id="emoji" aria-hidden="true">🙂</div>
+<div id="emoji" aria-hidden="true" hidden>🙂</div>
 <div id="name"><span id="dot"></span><span id="who">…</span></div>
+<div id="diag"></div>
 <p id="setup">Kalit yo'q. Sahifani shunday oching: <code>…/index.html#k=KALIT&amp;s=https://servis.onrender.com</code></p>
 <script>
 /* Hodisa shartnomasi: 04-Jonlantirish-yol-xaritasi.md, 3-bo'lim.
@@ -67,8 +70,8 @@ function setFace(e,cls){
   face.className=cls||"";
   if(n===cur) return;
   cur=n; face.classList.add("swap");
-  face.onerror=()=>{ face.style.display="none"; emo.style.display="block"; emo.textContent=EMO[e]||EMO.boshqa; };
-  face.onload=()=>{ face.style.display=""; emo.style.display="none"; face.classList.remove("swap"); };
+  face.onerror=()=>{ if(n!=="idle"){ cur=""; setFace("idle"); return; } face.style.display="none"; emo.hidden=false; emo.textContent=EMO[e]||EMO.boshqa; $("diag").textContent="Rasm topilmadi: img/"+bot+"/idle.png (papka yuklanganmi?)"; };
+  face.onload=()=>{ face.style.display=""; emo.hidden=true; face.classList.remove("swap"); };
   face.src="img/"+bot+"/"+n+".png";
 }
 function idle(){ setFace("idle"); }
@@ -90,17 +93,20 @@ function play(ev){
 function who(n){ if(n){ $("who").textContent=n; const b=n.toLowerCase(); if(b!==bot){ bot=b; cur=""; } } }
 function online(v){ $("dot").className=v?"ok":""; if(!v) $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,"")+" (oflayn)"; else $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,""); }
 
+function diag(t){ $("diag").textContent=t||""; }
 async function poll(){
   if(!key||!server) return;
   try{
     const r=await fetch(server+"/anim?since="+(since||0),{headers:{"X-Anim-Secret":key},cache:"no-store"});
-    if(r.status===403){ $("setup").style.display="block"; $("setup").textContent="Kalit noto'g'ri."; fails=99; online(false); return; }
-    if(!r.ok) throw new Error(r.status);
-    const d=await r.json(); fails=0; online(true);
+    if(r.status===403){ $("setup").style.display="block"; $("setup").textContent="Kalit noto'g'ri (Render'dagi ANIM_SECRET bilan bir xil bo'lsin)."; fails=99; online(false); diag("403: kalit mos emas"); return; }
+    if(r.status===404){ online(false); diag("404: serverda ANIM_SECRET o'rnatilmagan yoki /anim yo'q (yangi kod deploy qilinmagan)"); fails=3; return; }
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    let d; try{ d=await r.json(); }catch(e){ online(false); diag("Server /anim ni tanimadi: eski kod deploy qilingan (kod/ ni Render repoga yuklab, qayta deploy qiling)"); fails=3; return; }
+    fails=0; online(true); diag("");
     if(d.last<(since||0)) since=0;           // server qayta ishga tushgan
     if(since===null){ since=d.last; if(d.events.length) who(d.events[d.events.length-1].bot); }  // eski hodisalar qayta o'ynalmasin
     else{ for(const ev of d.events){ play(ev); since=Math.max(since,ev.id); } }
-  }catch(e){ if(++fails>=3) online(false); }
+  }catch(e){ if(++fails>=3){ online(false); diag("Ulanib bo'lmadi: server uxlayapti (1 daqiqa kuting), manzil (s=) xato yoki ANIM_ORIGIN mos emas. "+e.message); } }
 }
 idle(); poll(); setInterval(()=>{ if(fails<99) poll(); },POLL_MS);
 </script>
