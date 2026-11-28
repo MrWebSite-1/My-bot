@@ -2,50 +2,75 @@
 <html lang="uz">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>Hamroh</title>
 <style>
-:root{--bg:#1d2433;--fg:#eef1f7;--dim:#8b95ab;--face:#2c3650;--bub:#f3efe6;--bubfg:#232a3b;--ok:#6fcf97;--off:#e07a7a}
-@media (prefers-color-scheme:light){:root{--bg:#e9edf5;--fg:#1d2433;--dim:#667088;--face:#fff;--bub:#232a3b;--bubfg:#f3efe6}}
+:root{--bg:#1d2433;--fg:#eef1f7;--dim:#8b95ab;--bub:#f3efe6;--bubfg:#232a3b;--ok:#6fcf97;--off:#e07a7a}
+@media (prefers-color-scheme:light){:root{--bg:#e9edf5;--fg:#1d2433;--dim:#667088;--bub:#232a3b;--bubfg:#f3efe6}}
 *{box-sizing:border-box}
-html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom)}
-#bubble{min-height:64px;max-width:min(420px,90vw);padding:14px 18px;border-radius:20px 20px 20px 4px;background:var(--bub);color:var(--bubfg);font-size:17px;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
-#bubble.on{opacity:1;transform:none}
-#char{flex:none;height:min(60vh,520px);min-height:240px;width:auto;max-width:90vw;object-fit:contain;transform-origin:50% 100%;animation:breathe 4s ease-in-out infinite;user-select:none;-webkit-user-drag:none;transition:opacity .15s}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+#stage{position:fixed;inset:0;overflow:hidden}
+#pet{position:absolute;left:0;top:0;will-change:transform;touch-action:none;cursor:grab}
+#pet:active{cursor:grabbing}
+#flip{width:100%;height:100%;transform-origin:50% 50%}
+#char{display:block;width:100%;height:100%;transform-origin:50% 100%;pointer-events:none;-webkit-user-drag:none;animation:breathe 4s ease-in-out infinite}
 #char.talk{animation:talk .32s ease-in-out infinite}
 #char.think{animation:breathe 1.6s ease-in-out infinite}
-#char.swap{opacity:.25}
-#emoji{font-size:96px;line-height:1}
+#char.still{animation:none}
+#emoji{position:absolute;inset:0;display:grid;place-items:center;font-size:72px}
 #emoji[hidden]{display:none}
-#diag{max-width:420px;text-align:center;font-size:13px;color:var(--dim);min-height:18px}
 @keyframes breathe{50%{transform:scaleY(1.012)}}
 @keyframes talk{50%{transform:scaleY(1.02) translateY(-2px)}}
-#name{font-size:15px;color:var(--dim)}
+#bubble{position:absolute;left:0;top:0;max-width:min(280px,80vw);padding:12px 16px;border-radius:18px;background:var(--bub);color:var(--bubfg);font-size:16px;opacity:0;transition:opacity .25s;pointer-events:none}
+#bubble.on{opacity:1}
+#zz{position:absolute;left:0;top:0;font-weight:700;font-size:26px;color:var(--dim);opacity:0;pointer-events:none;animation:zz 2.4s ease-in-out infinite}
+#zz.on{opacity:.9}
+@keyframes zz{50%{margin-top:-10px}}
+#hud{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top,0px) + 8px) 12px 0;text-align:center;font-size:14px;color:var(--dim);pointer-events:none}
 #dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--off);margin-right:6px}
 #dot.ok{background:var(--ok)}
-#setup{display:none;max-width:420px;text-align:center;color:var(--dim)}
-@media (prefers-reduced-motion:reduce){#char,#char.talk,#char.think{animation:none}}
+#diag{font-size:12px;min-height:16px;margin-top:2px}
+#setup{display:none;position:fixed;left:16px;right:16px;top:30%;text-align:center;color:var(--dim)}
+#safe{position:fixed;left:0;bottom:0;width:0;height:env(safe-area-inset-bottom,0px);pointer-events:none}
+@media (prefers-reduced-motion:reduce){#char,#char.talk,#char.think,#zz{animation:none}}
 </style>
 </head>
 <body>
-<div id="bubble" aria-live="polite"></div>
-<img id="char" alt="" aria-hidden="true" draggable="false">
-<div id="emoji" aria-hidden="true" hidden>🙂</div>
-<div id="name"><span id="dot"></span><span id="who">…</span></div>
-<div id="diag"></div>
-<p id="setup">Kalit yo'q. Sahifani shunday oching: <code>…/index.html#k=KALIT&amp;s=https://servis.onrender.com</code></p>
+<div id="stage">
+  <div id="pet"><div id="flip"><img id="char" alt="" draggable="false"><div id="emoji" hidden>🙂</div></div></div>
+  <div id="bubble" aria-live="polite"></div>
+  <div id="zz">z<small>z</small></div>
+</div>
+<div id="hud"><span id="dot"></span><span id="who">…</span><div id="diag"></div></div>
+<p id="setup">Kalit yo'q. Sahifani shunday oching: <code>…/anim/#k=KALIT&amp;s=https://servis.onrender.com&amp;b=reze</code></p>
+<div id="safe"></div>
 <script>
-/* Hodisa shartnomasi: 04-Jonlantirish-yol-xaritasi.md, 3-bo'lim.
-   J4 da emoji o'rniga rasm: EMO[emotion] ni <img> bilan almashtiring (fayl nomi = hissiyot). */
+/* ===== Sozlamalar (rasmlar o'zgarsa shu yerni tahrirlang) =====
+   Pozalar: img/<bot>/<nom>.png. f = rasm qaysi tomonga qaragan ("L" chap, "R" o'ng),
+   w,h = rasmning asl o'lchami, k = o'lcham koeffitsiyenti (boshqa pozalarga nisbatan tana kattaligi). */
+const POSE={
+  yurish1:{f:"L",k:1,w:677,h:1211}, yurish2:{f:"L",k:1,w:636,h:1211},
+  ot:{f:"L",k:.6,w:1115,h:990},     ilash:{f:"R",k:.92,w:406,h:1228},
+  osil:{f:"R",k:.95,w:281,h:1217},  yiqil:{f:"R",k:.65,w:1080,h:1127},
+  uxla:{f:"R",k:.6,w:595,h:1163}
+};
+const STAND={f:"L",k:1,w:500,h:1260,m:10};               // idle/hayron/xafa/sevinch (turgan holat, yuz ifodasi)
+const AVAIL=["idle","hayron","xafa","sevinch"];          // yangi hissiyot rasmi qo'shilsa nomini shu yerga yozing
+const ALIAS={kulgi:"sevinch","ma'qullash":"sevinch",salomlashish:"sevinch","yig'lash":"xafa"};
 const EMO={sevinch:"😊",kulgi:"😂",erkalash:"🥰",xafa:"😔","yig'lash":"😢",jahl:"😠",hayron:"😮",uyqu:"😴",uyalish:"🫣","ma'qullash":"👍",salomlashish:"👋","o'ylash":"🤔",boshqa:"🙂",idle:"🙂"};
-const POLL_MS=2000, BUBBLE_MS=5000, EMO_MS=7000;
-const $=id=>document.getElementById(id);
-const face=$("char"), emo=$("emoji"), bubble=$("bubble");
-let key="", server="", bot="reze", since=null, fails=0, tBub=0, tEmo=0, tTalk=0;
+const POLL_MS=2000, BUBBLE_MS=5000, EMO_MS=7000, SLEEP_AFTER=90000;
+const RM=matchMedia("(prefers-reduced-motion:reduce)").matches;
 
-// kalit URL # qismidan olinadi, localStorage ga saqlanadi va manzildan olib tashlanadi
+const $=id=>document.getElementById(id);
+const pet=$("pet"), flip=$("flip"), img=$("char"), emo=$("emoji"), bubble=$("bubble"), zz=$("zz"), safe=$("safe");
+const rand=(a,b)=>a+Math.random()*(b-a);
+const fname=e=>e.replace(/'/g,"");
+function pickImg(e){ if(AVAIL.includes(fname(e))) return fname(e); const a=ALIAS[e]; return a&&AVAIL.includes(a)?a:"idle"; }
+
+/* ===== Kalit va bot (URL # qismidan, keyin manzildan o'chiriladi) ===== */
+let key="", server="", bot="reze", since=null, fails=0;
 try{
   const h=new URLSearchParams(location.hash.slice(1));
   if(h.get("k")) localStorage.setItem("anim_k",h.get("k"));
@@ -55,45 +80,162 @@ try{
   key=localStorage.getItem("anim_k")||""; server=localStorage.getItem("anim_s")||"";
   bot=localStorage.getItem("anim_b")||"reze";
 }catch(e){}
-if(!key||!server){ $("setup").style.display="block"; }
+if(!key||!server) $("setup").style.display="block";
 
-/* Rasmlar: img/<bot>/<nom>.png. Yangi rasm qo'shilsa nomini AVAIL ga yozing.
-   Rasmi yo'q hissiyot ALIAS bo'yicha yaqinini, u ham yo'q bo'lsa idle ni ko'rsatadi. */
-const AVAIL=["idle","hayron","xafa","sevinch"];
-const ALIAS={kulgi:"sevinch","ma'qullash":"sevinch",salomlashish:"sevinch","yig'lash":"xafa"};
-const fname=e=>e.replace(/'/g,"");
-function pickImg(e){ if(AVAIL.includes(fname(e))) return fname(e); const a=ALIAS[e]; return a&&AVAIL.includes(a)?a:"idle"; }
-AVAIL.forEach(n=>{ new Image().src="img/"+bot+"/"+n+".png"; });
-let cur="";
-function setFace(e,cls){
-  const n=pickImg(e);
-  face.className=cls||"";
-  if(n===cur) return;
-  cur=n; face.classList.add("swap");
-  face.onerror=()=>{ if(n!=="idle"){ cur=""; setFace("idle"); return; } face.style.display="none"; emo.hidden=false; emo.textContent=EMO[e]||EMO.boshqa; $("diag").textContent="Rasm topilmadi: img/"+bot+"/idle.png (papka yuklanganmi?)"; };
-  face.onload=()=>{ face.style.display=""; emo.hidden=true; face.classList.remove("swap"); };
-  face.src="img/"+bot+"/"+n+".png";
+/* ===== O'lcham va rasm ===== */
+let U=.24, W=0, H=0, FY=0, href=300;
+function measure(){
+  W=innerWidth; H=innerHeight; href=Math.max(180,Math.min(300,H*.38)); U=href/1238;
+  FY=H-safe.offsetHeight-4;
 }
-function idle(){ setFace("idle"); }
+function dims(k){ const d=POSE[k]||STAND; return {w:d.w*d.k*U,h:d.h*d.k*U,f:d.f,m:(d.m||0)*d.k*U}; }
+function preload(){ AVAIL.concat(Object.keys(POSE)).forEach(n=>{ new Image().src="img/"+bot+"/"+n+".png"; }); }
+let curKey="", cd=null;
+function setKey(k){
+  if(k!==curKey){
+    curKey=k;
+    img.onerror=()=>{ if(k!=="idle"){ setKey("idle"); } else { img.style.display="none"; emo.hidden=false; $("diag").textContent="Rasm topilmadi: img/"+bot+"/idle.png (papka yuklanganmi?)"; } };
+    img.onload=()=>{ img.style.display=""; emo.hidden=true; };
+    img.src="img/"+bot+"/"+k+".png";
+  }
+  cd=dims(k);
+}
+
+/* ===== Holat mashinasi ===== */
+const P={x:0,y:0,vx:0,vy:0,dir:-1,st:"stand",t:3,phase:0,bob:0,held:false,
+  emo:"idle",emoUntil:0,lock:0,talkUntil:0,think:false,lastEv:performance.now()};
+let drag=null;
+
+function toStand(){ P.st="stand"; P.t=rand(2,5); P.bob=0; zz.classList.remove("on"); }
+function startWalk(){
+  P.dir=P.x<W*.2?1:P.x>W*.8?-1:(Math.random()<.5?-1:1);
+  P.st="walk"; P.t=rand(3,7); P.phase=0;
+}
+function startSit(t){ P.st="sit"; P.t=t||rand(4,9); P.bob=0; P.dir=Math.random()<.5?-1:1; setKey("ot"); }
+function startSleep(){ P.st="sleep"; P.bob=0; setKey("uxla"); zz.classList.add("on"); }
+function startClimb(side){ P.st="climb"; P.dir=side; P.t=rand(2.5,4.5); P.bob=0; setKey("ilash"); }
+function startFall(vx){ P.st="fall"; P.vy=0; P.vx=vx||0; P.bob=0; if(vx) P.dir=vx>0?1:-1; setKey("yiqil"); }
+function hitWall(side){
+  P.x=side>0?W-cd.w/2:cd.w/2;
+  if(!RM&&Math.random()<.35) startClimb(side); else P.dir=-side;
+}
+function nextAction(){
+  const n=performance.now();
+  if(n-P.lastEv>SLEEP_AFTER&&Math.random()<.5) return startSleep();
+  const r=Math.random();
+  if(RM||r>.8){ P.t=rand(2,4); return; }
+  if(r<.55) startWalk(); else startSit();
+}
+function react(e,ms){
+  const n=performance.now(); P.emo=e; P.emoUntil=n+ms; P.lock=n+ms;
+  if(P.st==="walk"||P.st==="sit"||P.st==="sleep") toStand();
+  else if(P.st==="climb") startFall(0);
+}
+function poke(){ P.lastEv=performance.now(); react("hayron",1500); }
+
+function update(dt,now){
+  if(P.held||drag&&drag.moved) return;
+  const SP=href*.28;
+  switch(P.st){
+    case "stand":
+      P.y=FY; setKey(now<P.emoUntil?pickImg(P.emo):"idle");
+      P.t-=dt; if(P.t<=0&&now>P.lock) nextAction();
+      break;
+    case "walk":
+      P.y=FY; P.phase+=dt;
+      setKey(Math.floor(P.phase/.25)%2?"yurish2":"yurish1");
+      P.x+=P.dir*SP*dt; P.bob=-Math.abs(Math.sin(P.phase*Math.PI/.25))*href*.012;
+      if(P.x-cd.w/2<=0) hitWall(-1); else if(P.x+cd.w/2>=W) hitWall(1);
+      P.t-=dt; if(P.t<=0&&P.st==="walk") toStand();
+      break;
+    case "sit": P.y=FY; P.t-=dt; if(P.t<=0) toStand(); break;
+    case "sleep": P.y=FY; break;
+    case "climb":
+      P.x=P.dir>0?W-cd.w/2:cd.w/2; P.y-=href*.2*dt; P.t-=dt;
+      if(P.y-cd.h<=H*.25) P.t=0;
+      if(P.t<=0) startFall(-P.dir*40);
+      break;
+    case "fall":
+      P.vy+=href*4*dt; P.y+=P.vy*dt; P.x=Math.min(Math.max(P.x+P.vx*dt,cd.w/2),W-cd.w/2);
+      if(P.y>=FY){ P.y=FY; const hard=P.vy>href*1.2; P.vx=0; if(hard) startSit(rand(1.5,3)); else toStand(); }
+      break;
+  }
+  const cls=P.st==="stand"?(now<P.talkUntil?"talk":P.think?"think":RM?"still":""):"still";
+  if(img.dataset.c!==cls){ img.dataset.c=cls; img.className=cls; }
+}
+
+let lw=0, lh=0, lf=null;
+function render(){
+  if(cd.w!==lw||cd.h!==lh){ pet.style.width=cd.w+"px"; pet.style.height=cd.h+"px"; lw=cd.w; lh=cd.h; }
+  const fl=P.held?false:(cd.f==="L"?P.dir>0:P.dir<0);
+  if(fl!==lf){ flip.style.transform=fl?"scaleX(-1)":""; lf=fl; }
+  const left=P.x-cd.w/2, top=P.y-cd.h+cd.m+P.bob;
+  pet.style.transform="translate3d("+left+"px,"+top+"px,0)";
+  if(bubble.classList.contains("on")){
+    const bw=bubble.offsetWidth, bh=bubble.offsetHeight;
+    const bx=Math.min(Math.max(P.x-bw/2,8),W-bw-8), by=Math.max(top-bh-10,44);
+    bubble.style.transform="translate("+bx+"px,"+by+"px)";
+  }
+  if(P.st==="sleep") zz.style.transform="translate("+(P.x+cd.w*.1)+"px,"+(top-8)+"px)";
+}
+let last=performance.now();
+function loop(t){
+  const dt=Math.min(.05,(t-last)/1000); last=t;
+  update(dt,t); render(); requestAnimationFrame(loop);
+}
+
+/* ===== Sudrash: ushlab osiltirish, qo'yib yuborsa yiqiladi ===== */
+const HAND=.59;   // osil rasmida qo'l kengligining qaysi qismida (0..1)
+function hold(px,py){ P.x=px+(.5-HAND)*cd.w; P.y=py+cd.h-8; }
+pet.addEventListener("pointerdown",e=>{
+  e.preventDefault(); try{ pet.setPointerCapture(e.pointerId); }catch(_){}
+  drag={x0:e.clientX,y0:e.clientY,lx:e.clientX,lt:performance.now(),vx:0,moved:false};
+});
+pet.addEventListener("pointermove",e=>{
+  if(!drag) return;
+  const n=performance.now();
+  if(!drag.moved&&Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>6){
+    drag.moved=true; P.held=true; P.st="held"; zz.classList.remove("on"); setKey("osil");
+  }
+  if(drag.moved){
+    const dt=Math.max(.016,(n-drag.lt)/1000);
+    drag.vx=drag.vx*.6+((e.clientX-drag.lx)/dt)*.4; drag.lx=e.clientX; drag.lt=n;
+    hold(e.clientX,e.clientY);
+  }
+});
+function endDrag(){
+  if(!drag) return;
+  const d=drag; drag=null;
+  if(d.moved){ P.held=false; startFall(Math.max(-250,Math.min(250,d.vx*.35))); }
+  else poke();
+}
+pet.addEventListener("pointerup",endDrag);
+pet.addEventListener("pointercancel",endDrag);
+
+/* ===== Bot hodisalari ===== */
+let tBub=0;
 function say(text){
   clearTimeout(tBub);
   if(!text){ bubble.classList.remove("on"); return; }
   bubble.textContent=text; bubble.classList.add("on");
   tBub=setTimeout(()=>bubble.classList.remove("on"),BUBBLE_MS);
 }
-function play(ev){
-  who(ev.bot);
-  clearTimeout(tEmo); clearTimeout(tTalk);
-  if(ev.kind==="typing"){ setFace("o'ylash","think"); tEmo=setTimeout(idle,15000); return; }
-  setFace(ev.emotion);
-  say(ev.text);
-  if(ev.speak_ms>0){ face.classList.add("talk"); tTalk=setTimeout(()=>{face.classList.remove("talk");},Math.min(ev.speak_ms,12000)); }
-  tEmo=setTimeout(idle,Math.max(EMO_MS,ev.speak_ms||0));
+function who(n){
+  if(!n) return; $("who").textContent=n;
+  const b=n.toLowerCase(); if(b!==bot){ bot=b; curKey=""; preload(); }
 }
-function who(n){ if(n){ $("who").textContent=n; const b=n.toLowerCase(); if(b!==bot){ bot=b; cur=""; } } }
-function online(v){ $("dot").className=v?"ok":""; if(!v) $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,"")+" (oflayn)"; else $("who").textContent=$("who").textContent.replace(/ \(oflayn\)$/,""); }
-
+function online(v){
+  const w=$("who"); w.textContent=w.textContent.replace(/ \(oflayn\)$/,"")+(v?"":" (oflayn)");
+  $("dot").className=v?"ok":"";
+}
 function diag(t){ $("diag").textContent=t||""; }
+function play(ev){
+  who(ev.bot); const n=performance.now(); P.lastEv=n;
+  if(ev.kind==="typing"){ P.think=true; react("o'ylash",15000); return; }
+  P.think=false;
+  react(ev.emotion,Math.max(EMO_MS,ev.speak_ms||0)); say(ev.text);
+  if(ev.speak_ms>0) P.talkUntil=n+Math.min(ev.speak_ms,12000);
+}
 async function poll(){
   if(!key||!server) return;
   try{
@@ -101,14 +243,22 @@ async function poll(){
     if(r.status===403){ $("setup").style.display="block"; $("setup").textContent="Kalit noto'g'ri (Render'dagi ANIM_SECRET bilan bir xil bo'lsin)."; fails=99; online(false); diag("403: kalit mos emas"); return; }
     if(r.status===404){ online(false); diag("404: serverda ANIM_SECRET o'rnatilmagan yoki /anim yo'q (yangi kod deploy qilinmagan)"); fails=3; return; }
     if(!r.ok) throw new Error("HTTP "+r.status);
-    let d; try{ d=await r.json(); }catch(e){ online(false); diag("Server /anim ni tanimadi: eski kod deploy qilingan (kod/ ni Render repoga yuklab, qayta deploy qiling)"); fails=3; return; }
+    let d; try{ d=await r.json(); }catch(e){ online(false); diag("Server /anim ni tanimadi: eski kod deploy qilingan"); fails=3; return; }
     fails=0; online(true); diag("");
-    if(d.last<(since||0)) since=0;           // server qayta ishga tushgan
-    if(since===null){ since=d.last; if(d.events.length) who(d.events[d.events.length-1].bot); }  // eski hodisalar qayta o'ynalmasin
+    if(d.last<(since||0)) since=0;
+    if(since===null){ since=d.last; if(d.events.length) who(d.events[d.events.length-1].bot); }
     else{ for(const ev of d.events){ play(ev); since=Math.max(since,ev.id); } }
   }catch(e){ if(++fails>=3){ online(false); diag("Ulanib bo'lmadi: server uxlayapti (1 daqiqa kuting), manzil (s=) xato yoki ANIM_ORIGIN mos emas. "+e.message); } }
 }
-idle(); poll(); setInterval(()=>{ if(fails<99) poll(); },POLL_MS);
+
+/* ===== Ishga tushirish ===== */
+measure(); preload(); setKey("idle");
+P.x=W*.5; P.y=FY;
+addEventListener("resize",()=>{ measure(); cd=dims(curKey); P.x=Math.min(Math.max(P.x,cd.w/2),Math.max(cd.w/2,W-cd.w/2)); if(["stand","walk","sit","sleep"].includes(P.st)) P.y=FY; });
+requestAnimationFrame(t=>{ last=t; loop(t); });
+poll(); setInterval(()=>{ if(fails<99) poll(); },POLL_MS);
+/* sinov uchun (brauzer konsoli): anim_test("sevinch","Salom!") */
+window.anim_test=(e,t)=>play({bot:bot,kind:"reply",emotion:e,text:t||"",speak_ms:(t||"").length*60});
 </script>
 </body>
 </html>
