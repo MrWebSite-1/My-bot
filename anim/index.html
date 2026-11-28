@@ -12,6 +12,7 @@
 html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
 body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;-webkit-user-select:none;user-select:none}
 #stage{position:fixed;inset:0;overflow:hidden}
+#shadow{position:absolute;left:0;top:0;height:12px;border-radius:50%;background:radial-gradient(closest-side,rgba(0,0,0,.55),rgba(0,0,0,0));opacity:0;pointer-events:none}
 #pet{position:absolute;left:0;top:0;will-change:transform;touch-action:none;cursor:grab}
 #pet:active{cursor:grabbing}
 #flip{width:100%;height:100%;transform-origin:50% 50%}
@@ -39,6 +40,7 @@ body{background:var(--bg);color:var(--fg);font:16px/1.4 "Trebuchet MS",system-ui
 </head>
 <body>
 <div id="stage">
+  <div id="shadow"></div>
   <div id="pet"><div id="flip"><img id="char" alt="" draggable="false"><div id="emoji" hidden>🙂</div></div></div>
   <div id="bubble" aria-live="polite"></div>
   <div id="zz">z<small>z</small></div>
@@ -102,75 +104,132 @@ function setKey(k){
 }
 
 /* ===== Holat mashinasi ===== */
-const P={x:0,y:0,vx:0,vy:0,dir:-1,st:"stand",t:3,phase:0,bob:0,held:false,
+const HAPPY=["sevinch","kulgi","erkalash","salomlashish","ma'qullash"];
+const P={x:0,y:0,vx:0,vy:0,vw:0,dir:-1,st:"stand",t:3,phase:0,bob:0,held:false,
+  rot:0,rv:0,sy:{x:1,v:0},fs:1,lf:"L",lh:false,hy:0,hop:null,hops:0,hopH:0,
+  mode:"up",pause:0,tt:0,run:false,stopping:false,bounces:0,
   emo:"idle",emoUntil:0,lock:0,talkUntil:0,think:false,lastEv:performance.now()};
 let drag=null;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const spring=dt=>{ const s=P.sy; s.v+=((1-s.x)*300-s.v*18)*dt; s.x+=s.v*dt; };   // siqilish/cho'zilish prujinasi
+const cancelHop=()=>{ P.hop=null; P.hops=0; P.hy=0; };
 
-function toStand(){ P.st="stand"; P.t=rand(2,5); P.bob=0; zz.classList.remove("on"); }
+function toStand(){ if(P.st==="sit") P.sy.x=1.07; P.st="stand"; P.t=rand(2,5); P.bob=0; P.vw=0; P.stopping=false; zz.classList.remove("on"); }
 function startWalk(){
-  P.dir=P.x<W*.2?1:P.x>W*.8?-1:(Math.random()<.5?-1:1);
-  P.st="walk"; P.t=rand(3,7); P.phase=0;
+  cancelHop(); P.dir=P.x<W*.2?1:P.x>W*.8?-1:(Math.random()<.5?-1:1);
+  P.st="walk"; P.t=rand(3,7); P.phase=0; P.vw=0; P.stopping=false; P.run=!RM&&Math.random()<.22; P.sy.x=.94;
 }
-function startSit(t){ P.st="sit"; P.t=t||rand(4,9); P.bob=0; P.dir=Math.random()<.5?-1:1; setKey("ot"); }
-function startSleep(){ P.st="sleep"; P.bob=0; setKey("uxla"); zz.classList.add("on"); }
-function startClimb(side){ P.st="climb"; P.dir=side; P.t=rand(2.5,4.5); P.bob=0; setKey("ilash"); }
-function startFall(vx){ P.st="fall"; P.vy=0; P.vx=vx||0; P.bob=0; if(vx) P.dir=vx>0?1:-1; setKey("yiqil"); }
+function startSit(t){ cancelHop(); P.st="sit"; P.t=t||rand(4,9); P.bob=0; P.vw=0; P.sy.x=.88; P.dir=Math.random()<.5?-1:1; setKey("ot"); }
+function startSleep(){ cancelHop(); P.st="sleep"; P.bob=0; P.vw=0; setKey("uxla"); zz.classList.add("on"); }
+function startClimb(side){ cancelHop(); P.st="climb"; P.dir=side; P.t=rand(2.5,4.5); P.mode="up"; P.pause=0; P.tt=0; P.vy=0; P.bob=0; P.vw=0; setKey("ilash"); }
+function startFall(vx,vy){ cancelHop(); P.st="fall"; P.vy=vy||0; P.vx=vx||0; P.tt=0; P.bounces=0; P.bob=0; if(vx) P.dir=vx>0?1:-1; setKey("yiqil"); }
+function startHop(){ P.hop={t:0,d:.36,h:P.hopH||href*.085}; P.sy.x=.88; }
 function hitWall(side){
   P.x=side>0?W-cd.w/2:cd.w/2;
   if(!RM&&Math.random()<.35) startClimb(side); else P.dir=-side;
+}
+function land(){
+  const v=P.vy; P.y=FY; P.vx=0;
+  if(v>href*1.2&&P.bounces<1){ P.bounces++; P.vy=-v*.3; P.sy.x=.8; return; }
+  P.vy=0; P.bounces=0; P.sy.x=1-Math.min(.28,v/(href*9));
+  if(v>href*1.2) startSit(rand(1.5,3)); else toStand();
 }
 function nextAction(){
   const n=performance.now();
   if(n-P.lastEv>SLEEP_AFTER&&Math.random()<.5) return startSleep();
   const r=Math.random();
-  if(RM||r>.8){ P.t=rand(2,4); return; }
-  if(r<.55) startWalk(); else startSit();
+  if(RM||r>.85){ P.t=rand(2,4); return; }
+  if(r>.75){ P.dir*=-1; P.t=rand(1.5,3); return; }      // atrofga qaraydi
+  if(r<.5) startWalk(); else startSit();
 }
 function react(e,ms){
   const n=performance.now(); P.emo=e; P.emoUntil=n+ms; P.lock=n+ms;
-  if(P.st==="walk"||P.st==="sit"||P.st==="sleep") toStand();
+  if(!RM){ if(HAPPY.includes(e)){ P.hops=2; P.hopH=href*.085; } else if(e==="hayron"){ P.hops=1; P.hopH=href*.12; } }
+  if(P.st==="walk") P.stopping=true;
+  else if(P.st==="sit"||P.st==="sleep") toStand();
   else if(P.st==="climb") startFall(0);
 }
 function poke(){ P.lastEv=performance.now(); react("hayron",1500); }
 
 function update(dt,now){
-  if(P.held||drag&&drag.moved) return;
-  const SP=href*.28;
+  spring(dt);
+  const tf=P.held?1:(cd.f==="L"?(P.dir>0?-1:1):(P.dir<0?-1:1));      // yuz yo'nalishi: burilish animatsiyasi
+  if(cd.f!==P.lf||P.held!==P.lh){ P.lf=cd.f; P.lh=P.held; P.fs=tf; }
+  P.fs+=(tf-P.fs)*Math.min(1,dt*16); if(Math.abs(tf-P.fs)<.02) P.fs=tf;
+  if(P.held){                                                         // ushlab turilganda mayatnik kabi tebranadi
+    if(drag){ drag.vx*=Math.pow(.05,dt); drag.vy*=Math.pow(.05,dt);
+      const tgt=clamp(drag.vx*.022,-28,28); P.rv+=((tgt-P.rot)*70-P.rv*6)*dt; P.rot+=P.rv*dt; }
+    return;
+  }
+  const SP=href*.36;
   switch(P.st){
     case "stand":
-      P.y=FY; setKey(now<P.emoUntil?pickImg(P.emo):"idle");
-      P.t-=dt; if(P.t<=0&&now>P.lock) nextAction();
+      P.y=FY; setKey(now<P.emoUntil?pickImg(P.emo):"idle"); P.rot*=Math.pow(.0005,dt);
+      if(P.hop){
+        const u=P.hop.t/P.hop.d; P.hop.t+=dt; P.hy=-P.hop.h*4*u*(1-u);
+        if(P.hop.t>=P.hop.d){ P.hop=null; P.hy=0; P.sy.x=.86; P.hops--; }
+      } else if(P.hops>0) startHop();
+      else { P.t-=dt; if(P.t<=0&&now>P.lock) nextAction(); }
       break;
-    case "walk":
-      P.y=FY; P.phase+=dt;
-      setKey(Math.floor(P.phase/.25)%2?"yurish2":"yurish1");
-      P.x+=P.dir*SP*dt; P.bob=-Math.abs(Math.sin(P.phase*Math.PI/.25))*href*.012;
-      if(P.x-cd.w/2<=0) hitWall(-1); else if(P.x+cd.w/2>=W) hitWall(1);
-      P.t-=dt; if(P.t<=0&&P.st==="walk") toStand();
-      break;
-    case "sit": P.y=FY; P.t-=dt; if(P.t<=0) toStand(); break;
-    case "sleep": P.y=FY; break;
+    case "walk":{
+      P.y=FY;
+      const tgt=P.stopping?0:P.dir*SP*(P.run?1.7:1);
+      P.vw+=(tgt-P.vw)*Math.min(1,dt*(P.stopping?9:5));                // tezlanish va sekinlashish
+      P.x+=P.vw*dt;
+      const av=Math.abs(P.vw), f=Math.min(1,av/SP);
+      P.phase+=av*dt/(href*.26);                                       // qadam masofaga bog'liq (sirpanish kamayadi)
+      setKey(Math.floor(P.phase)%2?"yurish2":"yurish1");
+      P.bob=-Math.abs(Math.sin(P.phase*Math.PI))*href*.014*f;
+      P.rot=clamp(P.vw/SP*(P.run?3.5:2.2),-8,8)+Math.sin(P.phase*Math.PI)*.8*f;   // yurganda oldinga engashadi
+      if(P.x-cd.w/2<=0){ hitWall(-1); break; } else if(P.x+cd.w/2>=W){ hitWall(1); break; }
+      P.t-=dt; if(P.t<=0) P.stopping=true;
+      if(P.stopping&&av<6) toStand();
+      break; }
+    case "sit": P.y=FY; P.rot*=Math.pow(.0005,dt); P.t-=dt; if(P.t<=0) toStand(); break;
+    case "sleep": P.y=FY; P.rot*=Math.pow(.0005,dt); break;
     case "climb":
-      P.x=P.dir>0?W-cd.w/2:cd.w/2; P.y-=href*.2*dt; P.t-=dt;
-      if(P.y-cd.h<=H*.25) P.t=0;
-      if(P.t<=0) startFall(-P.dir*40);
+      P.x+=((P.dir>0?W-cd.w/2:cd.w/2)-P.x)*Math.min(1,dt*12); P.tt+=dt;
+      P.rot=Math.sin(P.tt*4.5)*1.2;
+      if(P.mode==="up"){                                               // qadam-baqadam chiqadi
+        P.y-=href*.22*(.55+.9*Math.abs(Math.sin(P.tt*4.5)))*dt; P.t-=dt;
+        if(P.y-cd.h<=H*.22) P.t=0;
+        if(P.t<=0){ P.mode="hold"; P.pause=rand(.5,1); }
+      } else if(P.mode==="hold"){
+        P.pause-=dt;
+        if(P.pause<=0){ if(Math.random()<.5){ P.mode="down"; P.vy=0; } else startFall(-P.dir*50); }
+      } else {                                                         // sekin sirpanib tushadi
+        P.vy=Math.min(P.vy+href*.5*dt,href*.9); P.y+=P.vy*dt;
+        if(P.y>=FY){ P.y=FY; P.sy.x=.9; toStand(); }
+      }
       break;
-    case "fall":
-      P.vy+=href*4*dt; P.y+=P.vy*dt; P.x=Math.min(Math.max(P.x+P.vx*dt,cd.w/2),W-cd.w/2);
-      if(P.y>=FY){ P.y=FY; const hard=P.vy>href*1.2; P.vx=0; if(hard) startSit(rand(1.5,3)); else toStand(); }
-      break;
+    case "fall":{
+      P.tt+=dt; P.vy+=href*4*dt; P.y+=P.vy*dt; P.vx*=1-.5*dt; P.x+=P.vx*dt;
+      const lo=cd.w/2, hi=W-cd.w/2;
+      if(P.x<lo){ P.x=lo; P.vx=Math.abs(P.vx)*.5; } else if(P.x>hi){ P.x=hi; P.vx=-Math.abs(P.vx)*.5; }
+      if(P.y-cd.h<0&&P.vy<0){ P.y=cd.h; P.vy=0; }
+      P.rot+=(Math.sin(P.tt*7)*10-P.rot)*Math.min(1,dt*6);
+      if(P.y>=FY&&P.vy>0) land();
+      break; }
   }
   const cls=P.st==="stand"?(now<P.talkUntil?"talk":P.think?"think":RM?"still":""):"still";
   if(img.dataset.c!==cls){ img.dataset.c=cls; img.className=cls; }
 }
 
-let lw=0, lh=0, lf=null;
+const shadow=$("shadow");
+let lw=0, lh=0, lo="", lsw=0;
 function render(){
   if(cd.w!==lw||cd.h!==lh){ pet.style.width=cd.w+"px"; pet.style.height=cd.h+"px"; lw=cd.w; lh=cd.h; }
-  const fl=P.held?false:(cd.f==="L"?P.dir>0:P.dir<0);
-  if(fl!==lf){ flip.style.transform=fl?"scaleX(-1)":""; lf=fl; }
-  const left=P.x-cd.w/2, top=P.y-cd.h+cd.m+P.bob;
+  const org=P.held?(HAND*100)+"% 0%":(P.st==="fall"?"50% 50%":"50% 100%");
+  if(org!==lo){ flip.style.transformOrigin=org; lo=org; }
+  const sy=P.sy.x, sx=1+(1-sy)*.7;
+  flip.style.transform="rotate("+P.rot.toFixed(2)+"deg) scale("+(P.fs*sx).toFixed(3)+","+sy.toFixed(3)+")";
+  const left=P.x-cd.w/2, top=P.y-cd.h+cd.m+P.bob+P.hy;
   pet.style.transform="translate3d("+left+"px,"+top+"px,0)";
+  const sw=cd.w*(P.st==="sit"||P.st==="sleep"||P.st==="fall"?.7:.5);
+  if(sw!==lsw){ shadow.style.width=sw+"px"; lsw=sw; }
+  const air=Math.max(0,FY-P.y-P.hy);
+  shadow.style.opacity=(P.st==="climb"||P.held)?0:(.32*Math.max(0,1-air/(href*1.1))).toFixed(3);
+  shadow.style.transform="translate("+(P.x-sw/2)+"px,"+(FY-6)+"px)";
   if(bubble.classList.contains("on")){
     const bw=bubble.offsetWidth, bh=bubble.offsetHeight;
     const bx=Math.min(Math.max(P.x-bw/2,8),W-bw-8), by=Math.max(top-bh-10,44);
@@ -184,30 +243,33 @@ function loop(t){
   update(dt,t); render(); requestAnimationFrame(loop);
 }
 
-/* ===== Sudrash: ushlab osiltirish, qo'yib yuborsa yiqiladi ===== */
+/* ===== Sudrash: ushlab osiltirish (mayatnik), qo'yib yuborsa otiladi/yiqiladi, devor yonida yopishadi ===== */
 const HAND=.59;   // osil rasmida qo'l kengligining qaysi qismida (0..1)
 function hold(px,py){ P.x=px+(.5-HAND)*cd.w; P.y=py+cd.h-8; }
 pet.addEventListener("pointerdown",e=>{
   e.preventDefault(); try{ pet.setPointerCapture(e.pointerId); }catch(_){}
-  drag={x0:e.clientX,y0:e.clientY,lx:e.clientX,lt:performance.now(),vx:0,moved:false};
+  drag={x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,lt:performance.now(),vx:0,vy:0,moved:false};
 });
 pet.addEventListener("pointermove",e=>{
   if(!drag) return;
   const n=performance.now();
   if(!drag.moved&&Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)>6){
-    drag.moved=true; P.held=true; P.st="held"; zz.classList.remove("on"); setKey("osil");
+    drag.moved=true; cancelHop(); P.held=true; P.st="held"; P.rot=0; P.rv=0; P.vw=0; zz.classList.remove("on"); setKey("osil");
   }
   if(drag.moved){
     const dt=Math.max(.016,(n-drag.lt)/1000);
-    drag.vx=drag.vx*.6+((e.clientX-drag.lx)/dt)*.4; drag.lx=e.clientX; drag.lt=n;
+    drag.vx=drag.vx*.6+((e.clientX-drag.lx)/dt)*.4; drag.vy=drag.vy*.6+((e.clientY-drag.ly)/dt)*.4;
+    drag.lx=e.clientX; drag.ly=e.clientY; drag.lt=n;
     hold(e.clientX,e.clientY);
   }
 });
 function endDrag(){
   if(!drag) return;
   const d=drag; drag=null;
-  if(d.moved){ P.held=false; startFall(Math.max(-250,Math.min(250,d.vx*.35))); }
-  else poke();
+  if(!d.moved){ poke(); return; }
+  P.held=false;
+  if(d.lx<40||d.lx>W-40) startClimb(d.lx<40?-1:1);                  // devor yonida qo'yib yuborilsa yopishadi
+  else startFall(clamp(d.vx*.35,-350,350),clamp(d.vy*.35,-700,400));
 }
 pet.addEventListener("pointerup",endDrag);
 pet.addEventListener("pointercancel",endDrag);
